@@ -1,0 +1,61 @@
+# OSX
+.DS_Store
+
+# Node / React Native
+node_modules/
+npm-debug.log
+yarn-error.log
+.pnp.*
+.yarn/cache
+.yarn/install-state.gz
+
+# Metro
+.metro-health-check*
+
+# React Native
+*.jsbundle
+
+# Android
+android/app/build/
+android/build/
+android/.gradle/
+android/local.properties
+android/captures/
+android/app/release/
+android/app/debug/
+android/keystores/debug.keystore
+android/keystores/*.keystore
+!android/keystores/.gitkeep
+*.iml
+
+# NDK build artifacts
+android/app/.cxx/
+android/app/src/main/cpp/build/
+android/app/src/main/cpp/.cxx/
+
+# iOS (no usado pero por si acaso)
+ios/
+
+# Testing
+coverage/
+.nyc_output
+
+# Editors
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Env
+.env
+.env.local
+.env.*.local
+
+# Logs
+*.log
+logs/
+
+# Build outputs
+build/
+dist/
+out/
