@@ -23,9 +23,8 @@ android/local.properties
 android/captures/
 android/app/release/
 android/app/debug/
-android/keystores/debug.keystore
-android/keystores/*.keystore
-!android/keystores/.gitkeep
+android/app/*.keystore
+android/app/*.jks
 *.iml
 
 # NDK build artifacts
