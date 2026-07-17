@@ -1,0 +1,14 @@
+{
+  "extends": "@react-native/typescript-config",
+  "compilerOptions": {
+    "strict": true,
+    "noUncheckedIndexedAccess": true,
+    "baseUrl": "."
+  },
+  "include": [
+    "index.js",
+    "src/**/*.ts",
+    "src/**/*.tsx"
+  ]
+}
+
