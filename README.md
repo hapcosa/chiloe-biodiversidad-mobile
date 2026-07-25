@@ -36,11 +36,17 @@ App Android (React Native bare CLI + módulo nativo C++ con NDK Camera2) para la
    npm install
    ```
 
-2. Ajusta `src/config/appConfig.ts`:
+2. Con el backend corriendo (`make dev` en la raíz del repo) y el dispositivo/emulador
+   conectado por adb, expón el gateway en `localhost` del dispositivo:
 
-   - Emulador Android: `http://10.0.2.2:8080`
-   - Dispositivo físico: URL LAN del gateway
-   - `googleWebClientId`: OAuth Web Client ID usado también por `auth-service`
+   ```bash
+   adb reverse tcp:8080 tcp:8080
+   ```
+
+   `appConfig.apiBaseUrl` ya apunta a `http://localhost:8080`, así que este comando
+   basta tanto para emulador como para dispositivo físico — no hace falta editar
+   el código para cada entorno. Configura además `googleWebClientId` con el OAuth
+   Web Client ID usado también por `auth-service`.
 
 3. Arranca Metro:
 
