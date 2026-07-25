@@ -37,3 +37,24 @@ export const reinoColors: Record<Reino, string> = {
   monera: '#6B6B2E',
 };
 
+// Emoji de respaldo cuando la especie no tiene foto todavía (placeholder de silueta).
+export const reinoEmoji: Record<Reino, string> = {
+  animalia: '🐾',
+  plantae: '🌿',
+  fungi: '🍄',
+  protista: '🦠',
+  monera: '🧫',
+};
+
+// Colores por categoría IUCN (LC→EX), de menor a mayor riesgo. DD queda en gris neutro.
+export const conservacionColors: Record<string, string> = {
+  LC: colors.success,
+  NT: '#8A8A2E',
+  VU: '#C77B1E',
+  EN: '#C7541E',
+  CR: colors.danger,
+  EW: '#4A2E2E',
+  EX: '#1A1A1A',
+  DD: colors.muted,
+};
+

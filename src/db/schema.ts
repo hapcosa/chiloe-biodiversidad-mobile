@@ -62,4 +62,8 @@ export const schemaStatements = [
     updated_at TEXT NOT NULL
   )`,
   'CREATE INDEX IF NOT EXISTS idx_mutation_queue_status ON mutation_queue(status, created_at)',
+  `CREATE TABLE IF NOT EXISTS especies_vistas (
+    especie_id INTEGER PRIMARY KEY,
+    visto_en TEXT NOT NULL
+  )`,
 ];

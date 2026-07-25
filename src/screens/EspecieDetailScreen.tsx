@@ -1,6 +1,6 @@
 import React from 'react';
-import {Pressable, ScrollView, StyleSheet, Text, View} from 'react-native';
-import {colors, reinoColors, reinoLabels, spacing} from '../styles/theme';
+import {Image, Pressable, ScrollView, StyleSheet, Text, View} from 'react-native';
+import {colors, reinoColors, reinoEmoji, reinoLabels, spacing} from '../styles/theme';
 import type {Species} from '../types/domain';
 
 interface EspecieDetailScreenProps {
@@ -30,9 +30,19 @@ export const EspecieDetailScreen = ({
       <Text style={styles.backButtonText}>← Biblioteca</Text>
     </Pressable>
 
+    {species.imagenes_urls?.[0] ? (
+      <Image resizeMode="cover" source={{uri: species.imagenes_urls[0]}} style={styles.hero} />
+    ) : (
+      <View style={[styles.hero, styles.heroPlaceholder, {backgroundColor: `${reinoColors[species.reino]}22`}]}>
+        <Text style={styles.heroPlaceholderEmoji}>{reinoEmoji[species.reino]}</Text>
+      </View>
+    )}
+
     <View style={styles.headerCard}>
       <View style={[styles.reinoBadge, {backgroundColor: reinoColors[species.reino]}]}>
-        <Text style={styles.reinoBadgeText}>{reinoLabels[species.reino]}</Text>
+        <Text style={styles.reinoBadgeText}>
+          {reinoEmoji[species.reino]} {reinoLabels[species.reino]}
+        </Text>
       </View>
       <Text style={styles.commonName}>{species.nombre_comun || species.nombre_cientifico}</Text>
       <Text style={styles.scientificName}>{species.nombre_cientifico}</Text>
@@ -60,11 +70,16 @@ export const EspecieDetailScreen = ({
       />
     </View>
 
-    <View style={styles.card}>
-      <Text style={styles.sectionTitle}>Fotos</Text>
-      <Field label="Portada" value={species.foto_portada_key} />
-      <Field label="Total de fotos" value={species.fotos_keys.length} />
-    </View>
+    {species.imagenes_urls?.length > 1 ? (
+      <View style={styles.card}>
+        <Text style={styles.sectionTitle}>Más fotos</Text>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+          {species.imagenes_urls.slice(1).map(url => (
+            <Image key={url} resizeMode="cover" source={{uri: url}} style={styles.thumb} />
+          ))}
+        </ScrollView>
+      </View>
+    ) : null}
   </ScrollView>
 );
 
@@ -81,6 +96,25 @@ const styles = StyleSheet.create({
     color: colors.primary,
     fontSize: 16,
     fontWeight: '700',
+  },
+  hero: {
+    borderRadius: 18,
+    height: 220,
+    marginBottom: spacing.md,
+    width: '100%',
+  },
+  heroPlaceholder: {
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  heroPlaceholderEmoji: {
+    fontSize: 72,
+  },
+  thumb: {
+    borderRadius: 12,
+    height: 96,
+    marginRight: spacing.sm,
+    width: 96,
   },
   headerCard: {
     backgroundColor: colors.surface,
