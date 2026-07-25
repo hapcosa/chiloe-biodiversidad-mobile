@@ -2,6 +2,7 @@ import React, {useCallback, useEffect, useState} from 'react';
 import {
   ActivityIndicator,
   FlatList,
+  Image,
   Pressable,
   RefreshControl,
   StyleSheet,
@@ -13,7 +14,15 @@ import {
 import {speciesApi} from '../api';
 import {initializeDatabase} from '../db/connection';
 import {listCachedSpecies, upsertSpecies} from '../db/speciesCache';
-import {colors, reinoColors, reinoLabels, spacing} from '../styles/theme';
+import {listViewedSpeciesIds, markSpeciesViewed} from '../db/speciesViewed';
+import {
+  colors,
+  conservacionColors,
+  reinoColors,
+  reinoEmoji,
+  reinoLabels,
+  spacing,
+} from '../styles/theme';
 import type {Reino, Species} from '../types/domain';
 
 interface BibliotecaScreenProps {
@@ -40,11 +49,13 @@ export const BibliotecaScreen = ({
   const [isLoading, setIsLoading] = useState(true);
   const [isOfflineData, setIsOfflineData] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [viewedIds, setViewedIds] = useState<Set<number>>(new Set());
 
   const loadSpecies = useCallback(async () => {
     setIsLoading(true);
     setError(null);
     await initializeDatabase();
+    setViewedIds(await listViewedSpeciesIds());
 
     try {
       const response = await speciesApi.list({
@@ -87,30 +98,65 @@ export const BibliotecaScreen = ({
     return () => clearTimeout(timeout);
   }, [loadSpecies]);
 
-  const renderSpecies: ListRenderItem<Species> = ({item}) => (
-    <Pressable
-      accessibilityRole="button"
-      onPress={() => onSelectSpecies(item)}
-      style={({pressed}) => [styles.speciesCard, pressed && styles.cardPressed]}>
-      <View style={styles.cardHeader}>
-        <Text style={styles.commonName}>{item.nombre_comun || item.nombre_cientifico}</Text>
-        <View style={[styles.reinoBadge, {backgroundColor: reinoColors[item.reino]}]}>
-          <Text style={styles.reinoBadgeText}>{reinoLabels[item.reino]}</Text>
+  const openSpecies = (item: Species): void => {
+    setViewedIds(previous => new Set(previous).add(item.id));
+    void markSpeciesViewed(item.id);
+    onSelectSpecies(item);
+  };
+
+  const renderSpecies: ListRenderItem<Species> = ({item}) => {
+    const cover = item.imagenes_urls?.[0];
+    const isViewed = viewedIds.has(item.id);
+    const reinoColor = reinoColors[item.reino];
+    const conservacionColor = conservacionColors[item.estado_conservacion] ?? colors.muted;
+
+    return (
+      <Pressable
+        accessibilityRole="button"
+        onPress={() => openSpecies(item)}
+        style={({pressed}) => [styles.card, pressed && styles.cardPressed]}>
+        <View style={[styles.cardMedia, {borderColor: reinoColor}]}>
+          {cover ? (
+            <Image resizeMode="cover" source={{uri: cover}} style={styles.cardImage} />
+          ) : (
+            <View style={[styles.cardPlaceholder, {backgroundColor: `${reinoColor}22`}]}>
+              <Text style={styles.cardPlaceholderEmoji}>{reinoEmoji[item.reino]}</Text>
+            </View>
+          )}
+          <View style={[styles.reinoDot, {backgroundColor: reinoColor}]} />
+          {isViewed ? (
+            <View style={styles.viewedBadge}>
+              <Text style={styles.viewedBadgeText}>✓</Text>
+            </View>
+          ) : null}
+          {item.endemica ? (
+            <View style={styles.endemicBadge}>
+              <Text style={styles.endemicBadgeText}>★ Endémica</Text>
+            </View>
+          ) : null}
         </View>
-      </View>
-      <Text style={styles.scientificName}>{item.nombre_cientifico}</Text>
-      <Text numberOfLines={2} style={styles.description}>
-        {item.descripcion}
-      </Text>
-    </Pressable>
-  );
+
+        <Text numberOfLines={1} style={styles.commonName}>
+          {item.nombre_comun || item.nombre_cientifico}
+        </Text>
+        <Text numberOfLines={1} style={styles.scientificName}>
+          {item.nombre_cientifico}
+        </Text>
+
+        <View style={styles.cardFooter}>
+          <View style={[styles.conservacionDot, {backgroundColor: conservacionColor}]} />
+          <Text style={styles.conservacionText}>{item.estado_conservacion || '—'}</Text>
+        </View>
+      </Pressable>
+    );
+  };
 
   return (
     <View style={styles.container}>
       <View style={styles.header}>
         <View>
-          <Text style={styles.title}>Biblioteca</Text>
-          <Text style={styles.subtitle}>Catálogo multi-reino de Chiloé</Text>
+          <Text style={styles.title}>Pokédex Chiloé</Text>
+          <Text style={styles.subtitle}>Catálogo multi-reino de la biodiversidad</Text>
         </View>
         <Pressable accessibilityRole="button" onPress={onOpenProfile} style={styles.profileButton}>
           <Text style={styles.profileButtonText}>Perfil</Text>
@@ -141,7 +187,7 @@ export const BibliotecaScreen = ({
                 },
               ]}>
               <Text style={[styles.filterText, selected && styles.filterTextSelected]}>
-                {reino ? reinoLabels[reino] : 'Todos'}
+                {reino ? `${reinoEmoji[reino]} ${reinoLabels[reino]}` : 'Todos'}
               </Text>
             </Pressable>
           );
@@ -150,14 +196,21 @@ export const BibliotecaScreen = ({
 
       {error ? <Text style={styles.statusText}>{error}</Text> : null}
       {isOfflineData ? <Text style={styles.offlineText}>Modo offline</Text> : null}
+      {species.length > 0 ? (
+        <Text style={styles.collectionText}>
+          {viewedIds.size} de {species.length} vistas en esta lista
+        </Text>
+      ) : null}
 
       {isLoading && species.length === 0 ? (
         <ActivityIndicator color={colors.primary} style={styles.loader} />
       ) : (
         <FlatList
+          columnWrapperStyle={styles.row}
           contentContainerStyle={styles.listContent}
           data={species}
           keyExtractor={item => String(item.id)}
+          numColumns={2}
           refreshControl={
             <RefreshControl
               colors={[colors.primary]}
@@ -190,7 +243,7 @@ const styles = StyleSheet.create({
   },
   title: {
     color: colors.primaryDark,
-    fontSize: 30,
+    fontSize: 28,
     fontWeight: '800',
   },
   subtitle: {
@@ -223,7 +276,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     flexWrap: 'wrap',
     gap: spacing.sm,
-    marginBottom: spacing.md,
+    marginBottom: spacing.sm,
   },
   filterChip: {
     borderColor: colors.border,
@@ -248,53 +301,116 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     marginBottom: spacing.sm,
   },
+  collectionText: {
+    color: colors.muted,
+    fontWeight: '700',
+    marginBottom: spacing.sm,
+  },
   loader: {
     marginTop: spacing.xl,
+  },
+  row: {
+    gap: spacing.md,
   },
   listContent: {
     paddingBottom: spacing.xl,
   },
-  speciesCard: {
+  card: {
     backgroundColor: colors.surface,
     borderColor: colors.border,
-    borderRadius: 16,
+    borderRadius: 18,
     borderWidth: 1,
+    flex: 1,
     marginBottom: spacing.md,
-    padding: spacing.lg,
+    overflow: 'hidden',
+    padding: spacing.sm,
   },
   cardPressed: {
     opacity: 0.85,
   },
-  cardHeader: {
+  cardMedia: {
+    aspectRatio: 1,
+    borderRadius: 14,
+    borderWidth: 3,
+    marginBottom: spacing.sm,
+    overflow: 'hidden',
+  },
+  cardImage: {
+    height: '100%',
+    width: '100%',
+  },
+  cardPlaceholder: {
     alignItems: 'center',
-    flexDirection: 'row',
-    gap: spacing.sm,
-    justifyContent: 'space-between',
+    height: '100%',
+    justifyContent: 'center',
+    width: '100%',
+  },
+  cardPlaceholderEmoji: {
+    fontSize: 44,
+  },
+  reinoDot: {
+    borderRadius: 999,
+    height: 14,
+    position: 'absolute',
+    right: spacing.xs,
+    top: spacing.xs,
+    width: 14,
+  },
+  viewedBadge: {
+    backgroundColor: colors.success,
+    borderRadius: 999,
+    bottom: spacing.xs,
+    height: 22,
+    justifyContent: 'center',
+    left: spacing.xs,
+    position: 'absolute',
+    width: 22,
+    alignItems: 'center',
+  },
+  viewedBadgeText: {
+    color: colors.surface,
+    fontSize: 13,
+    fontWeight: '800',
+  },
+  endemicBadge: {
+    backgroundColor: 'rgba(0,0,0,0.65)',
+    borderRadius: 999,
+    bottom: spacing.xs,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 2,
+    position: 'absolute',
+    right: spacing.xs,
+  },
+  endemicBadgeText: {
+    color: colors.surface,
+    fontSize: 10,
+    fontWeight: '800',
   },
   commonName: {
     color: colors.text,
-    flex: 1,
-    fontSize: 18,
+    fontSize: 15,
     fontWeight: '800',
   },
   scientificName: {
     color: colors.primaryDark,
+    fontSize: 12,
     fontStyle: 'italic',
+    marginTop: 2,
+  },
+  cardFooter: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: spacing.xs,
     marginTop: spacing.xs,
   },
-  description: {
-    color: colors.muted,
-    lineHeight: 20,
-    marginTop: spacing.sm,
-  },
-  reinoBadge: {
+  conservacionDot: {
     borderRadius: 999,
-    paddingHorizontal: spacing.sm,
-    paddingVertical: spacing.xs,
+    height: 8,
+    width: 8,
   },
-  reinoBadgeText: {
-    color: colors.surface,
-    fontSize: 12,
+  conservacionText: {
+    color: colors.muted,
+    fontSize: 11,
     fontWeight: '700',
   },
   emptyText: {
@@ -303,4 +419,3 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
 });
-
