@@ -155,7 +155,7 @@ export const BibliotecaScreen = ({
     <View style={styles.container}>
       <View style={styles.header}>
         <View>
-          <Text style={styles.title}>Pokédex Chiloé</Text>
+          <Text style={styles.title}>Biblioteca</Text>
           <Text style={styles.subtitle}>Catálogo multi-reino de la biodiversidad</Text>
         </View>
         <Pressable accessibilityRole="button" onPress={onOpenProfile} style={styles.profileButton}>
