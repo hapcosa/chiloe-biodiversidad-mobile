@@ -66,4 +66,8 @@ export const schemaStatements = [
     especie_id INTEGER PRIMARY KEY,
     visto_en TEXT NOT NULL
   )`,
+  `CREATE TABLE IF NOT EXISTS especies_guardadas (
+    especie_id INTEGER PRIMARY KEY,
+    guardado_en TEXT NOT NULL
+  )`,
 ];

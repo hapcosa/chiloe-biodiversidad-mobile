@@ -1,7 +1,6 @@
 import React, {useCallback, useEffect, useState} from 'react';
 import {
   ActivityIndicator,
-  FlatList,
   Image,
   Pressable,
   ScrollView,
@@ -10,9 +9,8 @@ import {
   View,
 } from 'react-native';
 import {speciesApi} from '../api';
-import {useAuth} from '../auth/AuthContext';
 import {initializeDatabase} from '../db/connection';
-import {listCachedSpecies, upsertSpecies} from '../db/speciesCache';
+import {getLibraryStats, listCachedSpecies, upsertSpecies, type LibraryStats} from '../db/speciesCache';
 import {colors, reinoColors, reinoEmoji, reinoLabels, spacing} from '../styles/theme';
 import type {Reino, Species} from '../types/domain';
 
@@ -22,27 +20,21 @@ interface HomeScreenProps {
 
 const reinos: Reino[] = ['animalia', 'plantae', 'fungi', 'protista', 'monera'];
 
-const frases = [
-  'Chiloé guarda un archipiélago de vida que todavía estamos aprendiendo a nombrar.',
-  'Cada encuentro que registras ayuda a construir el mapa vivo de la isla.',
-  'La biodiversidad de los cinco reinos convive en un mismo paisaje: mira de cerca.',
-];
-
 export const HomeScreen = ({onSelectSpecies}: HomeScreenProps): React.JSX.Element => {
-  const {user} = useAuth();
   const [species, setSpecies] = useState<Species[]>([]);
   const [selectedReino, setSelectedReino] = useState<Reino | undefined>();
   const [isLoading, setIsLoading] = useState(true);
-  const [frase] = useState(() => frases[Math.floor(Math.random() * frases.length)]);
+  const [stats, setStats] = useState<LibraryStats>({total: 0, endemicas: 0});
 
   const load = useCallback(async (reino?: Reino) => {
     setIsLoading(true);
     await initializeDatabase();
+    setStats(await getLibraryStats());
 
     try {
       const response = await speciesApi.list({
         reino,
-        limit: 12,
+        limit: 1,
         offset: 0,
         orderby: 'nombre_comun',
         orderdir: 'asc',
@@ -50,7 +42,7 @@ export const HomeScreen = ({onSelectSpecies}: HomeScreenProps): React.JSX.Elemen
       await upsertSpecies(response.data);
       setSpecies(response.data);
     } catch {
-      setSpecies(await listCachedSpecies({reino, limit: 12, offset: 0}));
+      setSpecies(await listCachedSpecies({reino, limit: 1, offset: 0}));
     } finally {
       setIsLoading(false);
     }
@@ -61,17 +53,38 @@ export const HomeScreen = ({onSelectSpecies}: HomeScreenProps): React.JSX.Elemen
   }, [load, selectedReino]);
 
   const destacada = species[0];
-  const primerNombre = user?.name?.split(' ')[0] || 'explorador';
 
   return (
     <ScrollView contentContainerStyle={styles.container}>
       <View style={styles.hero}>
-        <Text style={styles.heroEmoji}>🌲🦉🍄</Text>
-        <Text style={styles.heroTitle}>Hola, {primerNombre}</Text>
-        <Text style={styles.heroSubtitle}>Descubre la biodiversidad de Chiloé, reino por reino.</Text>
+        <View style={styles.badge}>
+          <Text style={styles.badgeText}>🧭 Bitácora natural</Text>
+        </View>
+        <Text style={styles.eyebrow}>ARCHIPIÉLAGO DE CHILOÉ</Text>
+        <Text style={styles.heroTitle}>Los cinco reinos de la vida chilota</Text>
+        <Text style={styles.heroSubtitle}>
+          Una biblioteca ilustrada de la biodiversidad del archipiélago. Recorre bosques de
+          niebla, costas y turberas descubriendo las especies que habitan esta isla del sur del
+          mundo.
+        </Text>
+
+        <View style={styles.statsRow}>
+          <View style={styles.statItem}>
+            <Text style={styles.statLabel}>ESPECIES</Text>
+            <Text style={styles.statValue}>{stats.total}</Text>
+          </View>
+          <View style={styles.statItem}>
+            <Text style={styles.statLabel}>REINOS</Text>
+            <Text style={styles.statValue}>5</Text>
+          </View>
+          <View style={styles.statItem}>
+            <Text style={styles.statLabel}>ENDÉMICAS</Text>
+            <Text style={styles.statValue}>{stats.endemicas}</Text>
+          </View>
+        </View>
       </View>
 
-      <Text style={styles.sectionTitle}>Los cinco reinos</Text>
+      <Text style={styles.sectionTitle}>Explora por reino</Text>
       <View style={styles.reinoRow}>
         {reinos.map(reino => {
           const selected = reino === selectedReino;
@@ -81,18 +94,18 @@ export const HomeScreen = ({onSelectSpecies}: HomeScreenProps): React.JSX.Elemen
               key={reino}
               onPress={() => setSelectedReino(selected ? undefined : reino)}
               style={[
-                styles.reinoChip,
+                styles.reinoCircle,
                 {borderColor: reinoColors[reino]},
                 selected && {backgroundColor: reinoColors[reino]},
               ]}>
-              <Text style={styles.reinoChipEmoji}>{reinoEmoji[reino]}</Text>
-              <Text style={[styles.reinoChipText, selected && styles.reinoChipTextSelected]}>
-                {reinoLabels[reino]}
-              </Text>
+              <Text style={styles.reinoCircleEmoji}>{reinoEmoji[reino]}</Text>
             </Pressable>
           );
         })}
       </View>
+      {selectedReino ? (
+        <Text style={styles.reinoSelectedLabel}>{reinoLabels[selectedReino]}</Text>
+      ) : null}
 
       {isLoading ? (
         <ActivityIndicator color={colors.primary} style={styles.loader} />
@@ -120,61 +133,17 @@ export const HomeScreen = ({onSelectSpecies}: HomeScreenProps): React.JSX.Elemen
               </View>
             )}
             <View style={styles.featuredInfo}>
+              <Text style={styles.featuredReino}>{reinoLabels[destacada.reino]}</Text>
               <Text style={styles.featuredName}>
                 {destacada.nombre_comun || destacada.nombre_cientifico}
               </Text>
               <Text style={styles.featuredScientific}>{destacada.nombre_cientifico}</Text>
             </View>
           </Pressable>
-
-          {species.length > 1 ? (
-            <>
-              <Text style={styles.sectionTitle}>
-                {selectedReino ? `Más de ${reinoLabels[selectedReino]}` : 'Explora más especies'}
-              </Text>
-              <FlatList
-                contentContainerStyle={styles.miniListContent}
-                data={species.slice(1)}
-                horizontal
-                keyExtractor={item => String(item.id)}
-                renderItem={({item}) => (
-                  <Pressable
-                    accessibilityRole="button"
-                    onPress={() => onSelectSpecies(item)}
-                    style={styles.miniCard}>
-                    {item.imagenes_urls?.[0] ? (
-                      <Image
-                        resizeMode="cover"
-                        source={{uri: item.imagenes_urls[0]}}
-                        style={styles.miniImage}
-                      />
-                    ) : (
-                      <View
-                        style={[
-                          styles.miniImage,
-                          styles.miniPlaceholder,
-                          {backgroundColor: `${reinoColors[item.reino]}22`},
-                        ]}>
-                        <Text style={styles.miniPlaceholderEmoji}>{reinoEmoji[item.reino]}</Text>
-                      </View>
-                    )}
-                    <Text numberOfLines={1} style={styles.miniName}>
-                      {item.nombre_comun || item.nombre_cientifico}
-                    </Text>
-                  </Pressable>
-                )}
-                showsHorizontalScrollIndicator={false}
-              />
-            </>
-          ) : null}
         </>
       ) : (
         <Text style={styles.emptyText}>No hay especies para mostrar todavía.</Text>
       )}
-
-      <View style={styles.quoteCard}>
-        <Text style={styles.quoteText}>{frase}</Text>
-      </View>
     </ScrollView>
   );
 };
@@ -188,20 +157,56 @@ const styles = StyleSheet.create({
   hero: {
     backgroundColor: colors.primaryDark,
     borderRadius: 22,
-    marginBottom: spacing.lg,
+    marginBottom: spacing.xl,
     padding: spacing.xl,
   },
-  heroEmoji: {
-    fontSize: 32,
-    marginBottom: spacing.sm,
+  badge: {
+    alignSelf: 'flex-start',
+    backgroundColor: 'rgba(255,255,255,0.15)',
+    borderRadius: 999,
+    marginBottom: spacing.lg,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.xs,
+  },
+  badgeText: {
+    color: colors.surface,
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  eyebrow: {
+    color: colors.secondary,
+    fontSize: 12,
+    fontWeight: '800',
+    letterSpacing: 1.5,
+    marginBottom: spacing.xs,
   },
   heroTitle: {
     color: colors.surface,
-    fontSize: 26,
+    fontSize: 28,
     fontWeight: '800',
+    lineHeight: 34,
   },
   heroSubtitle: {
     color: '#DCE8E1',
+    lineHeight: 21,
+    marginTop: spacing.md,
+  },
+  statsRow: {
+    flexDirection: 'row',
+    gap: spacing.xl,
+    marginTop: spacing.xl,
+  },
+  statItem: {},
+  statLabel: {
+    color: '#9CC2AE',
+    fontSize: 11,
+    fontWeight: '700',
+    letterSpacing: 0.5,
+  },
+  statValue: {
+    color: colors.surface,
+    fontSize: 24,
+    fontWeight: '800',
     marginTop: spacing.xs,
   },
   sectionTitle: {
@@ -209,31 +214,27 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontWeight: '800',
     marginBottom: spacing.sm,
-    marginTop: spacing.md,
   },
   reinoRow: {
     flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: spacing.sm,
+    gap: spacing.md,
+    marginBottom: spacing.xs,
   },
-  reinoChip: {
+  reinoCircle: {
     alignItems: 'center',
     borderRadius: 999,
     borderWidth: 2,
-    flexDirection: 'row',
-    gap: spacing.xs,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
+    height: 56,
+    justifyContent: 'center',
+    width: 56,
   },
-  reinoChipEmoji: {
-    fontSize: 16,
+  reinoCircleEmoji: {
+    fontSize: 22,
   },
-  reinoChipText: {
-    color: colors.text,
+  reinoSelectedLabel: {
+    color: colors.muted,
     fontWeight: '700',
-  },
-  reinoChipTextSelected: {
-    color: colors.surface,
+    marginBottom: spacing.md,
   },
   loader: {
     marginTop: spacing.xl,
@@ -243,6 +244,7 @@ const styles = StyleSheet.create({
     borderColor: colors.border,
     borderRadius: 18,
     borderWidth: 1,
+    marginTop: spacing.sm,
     overflow: 'hidden',
   },
   featuredImage: {
@@ -259,10 +261,18 @@ const styles = StyleSheet.create({
   featuredInfo: {
     padding: spacing.lg,
   },
+  featuredReino: {
+    color: colors.secondary,
+    fontSize: 11,
+    fontWeight: '800',
+    letterSpacing: 0.5,
+    textTransform: 'uppercase',
+  },
   featuredName: {
     color: colors.text,
     fontSize: 18,
     fontWeight: '800',
+    marginTop: spacing.xs,
   },
   featuredScientific: {
     color: colors.primaryDark,
@@ -270,47 +280,10 @@ const styles = StyleSheet.create({
     fontStyle: 'italic',
     marginTop: spacing.xs,
   },
-  miniListContent: {
-    gap: spacing.md,
-    paddingVertical: spacing.xs,
-  },
-  miniCard: {
-    width: 110,
-  },
-  miniImage: {
-    borderRadius: 14,
-    height: 110,
-    marginBottom: spacing.xs,
-    width: 110,
-  },
-  miniPlaceholder: {
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  miniPlaceholderEmoji: {
-    fontSize: 36,
-  },
-  miniName: {
-    color: colors.text,
-    fontSize: 13,
-    fontWeight: '700',
-  },
   emptyText: {
     color: colors.muted,
+    marginTop: spacing.sm,
     paddingVertical: spacing.xl,
-    textAlign: 'center',
-  },
-  quoteCard: {
-    backgroundColor: `${colors.secondary}22`,
-    borderRadius: 18,
-    marginTop: spacing.xl,
-    padding: spacing.lg,
-  },
-  quoteText: {
-    color: colors.primaryDark,
-    fontSize: 15,
-    fontStyle: 'italic',
-    lineHeight: 22,
     textAlign: 'center',
   },
 });

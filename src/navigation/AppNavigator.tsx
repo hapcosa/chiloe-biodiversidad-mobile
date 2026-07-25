@@ -33,6 +33,10 @@ const ExplorarStack = (): React.JSX.Element => (
   <SpeciesStackNavigator ListaScreen={BibliotecaScreen} />
 );
 
+const GuardadosStack = (): React.JSX.Element => (
+  <SpeciesStackNavigator ListaScreen={GuardadosScreen} />
+);
+
 interface TabBarIconProps {
   routeName: keyof RootTabParamList;
   color: string;
@@ -81,7 +85,7 @@ export const AppNavigator = (): React.JSX.Element => {
       })}>
       <Tab.Screen component={HomeStack} name="Home" />
       <Tab.Screen component={ExplorarStack} name="Explorar" />
-      <Tab.Screen component={GuardadosScreen} name="Guardados" />
+      <Tab.Screen component={GuardadosStack} name="Guardados" />
       <Tab.Screen component={PerfilStackNavigator} name="Perfil" />
     </Tab.Navigator>
   );

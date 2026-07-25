@@ -166,3 +166,18 @@ export const getCachedSpecies = async (id: number): Promise<Species | null> => {
   return rows[0] ? rowToSpecies(rows[0]) : null;
 };
 
+export interface LibraryStats {
+  total: number;
+  endemicas: number;
+}
+
+export const getLibraryStats = async (): Promise<LibraryStats> => {
+  const rows = await querySql<{total: number; endemicas: number}>(
+    'SELECT COUNT(*) as total, SUM(endemica) as endemicas FROM species',
+  );
+  return {
+    total: rows[0]?.total ?? 0,
+    endemicas: rows[0]?.endemicas ?? 0,
+  };
+};
+
