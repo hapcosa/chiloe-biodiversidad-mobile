@@ -6,6 +6,7 @@ import type {Species} from '../types/domain';
 interface EspecieDetailScreenProps {
   species: Species;
   onBack: () => void;
+  onAddEncuentro: () => void;
 }
 
 const Field = ({label, value}: {label: string; value?: string | number | null}): React.JSX.Element | null => {
@@ -24,6 +25,7 @@ const Field = ({label, value}: {label: string; value?: string | number | null}):
 export const EspecieDetailScreen = ({
   species,
   onBack,
+  onAddEncuentro,
 }: EspecieDetailScreenProps): React.JSX.Element => (
   <ScrollView contentContainerStyle={styles.container}>
     <Pressable accessibilityRole="button" onPress={onBack} style={styles.backButton}>
@@ -48,6 +50,10 @@ export const EspecieDetailScreen = ({
       <Text style={styles.scientificName}>{species.nombre_cientifico}</Text>
       <Field label="Autor científico" value={species.autor_cientifico} />
     </View>
+
+    <Pressable accessibilityRole="button" onPress={onAddEncuentro} style={styles.encuentroButton}>
+      <Text style={styles.encuentroButtonText}>+ Marcar como visto / agregar mi encuentro</Text>
+    </Pressable>
 
     <View style={styles.card}>
       <Text style={styles.sectionTitle}>Descripción</Text>
@@ -145,6 +151,19 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontStyle: 'italic',
     marginTop: spacing.xs,
+  },
+  encuentroButton: {
+    alignItems: 'center',
+    backgroundColor: colors.primary,
+    borderRadius: 12,
+    justifyContent: 'center',
+    marginBottom: spacing.md,
+    minHeight: 48,
+    paddingHorizontal: spacing.md,
+  },
+  encuentroButtonText: {
+    color: colors.surface,
+    fontWeight: '800',
   },
   card: {
     backgroundColor: colors.surface,

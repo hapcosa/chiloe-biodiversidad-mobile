@@ -5,6 +5,7 @@ import {BibliotecaScreen} from '../screens/BibliotecaScreen';
 import {CameraScreen} from '../screens/CameraScreen';
 import {EspecieDetailScreen} from '../screens/EspecieDetailScreen';
 import {LoginScreen} from '../screens/LoginScreen';
+import {MiEncuentroFormScreen} from '../screens/MiEncuentroFormScreen';
 import {PerfilScreen} from '../screens/PerfilScreen';
 import {colors} from '../styles/theme';
 import {startMutationSyncWorker, syncPendingMutations} from '../sync/mutationSync';
@@ -14,6 +15,7 @@ type Route =
   | {name: 'biblioteca'}
   | {name: 'camera'}
   | {name: 'detalle'; species: Species}
+  | {name: 'encuentro'; species: Species}
   | {name: 'perfil'};
 
 export const AppNavigator = (): React.JSX.Element => {
@@ -45,7 +47,18 @@ export const AppNavigator = (): React.JSX.Element => {
   if (route.name === 'detalle') {
     return (
       <EspecieDetailScreen
+        onAddEncuentro={() => setRoute({name: 'encuentro', species: route.species})}
         onBack={() => setRoute({name: 'biblioteca'})}
+        species={route.species}
+      />
+    );
+  }
+
+  if (route.name === 'encuentro') {
+    return (
+      <MiEncuentroFormScreen
+        onBack={() => setRoute({name: 'detalle', species: route.species})}
+        onSaved={() => setRoute({name: 'biblioteca'})}
         species={route.species}
       />
     );

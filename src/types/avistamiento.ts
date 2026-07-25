@@ -9,7 +9,7 @@ export interface AvistamientoDraft {
   reino: Reino;
   nombre_sugerido?: string | null;
   descripcion?: string | null;
-  foto_key: string;
+  foto_key?: string | null;
   local_photo_path?: string | null;
   geo_lat: number;
   geo_lng: number;

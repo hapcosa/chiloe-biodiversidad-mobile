@@ -39,7 +39,7 @@ export const schemaStatements = [
     reino TEXT NOT NULL,
     nombre_sugerido TEXT,
     descripcion TEXT,
-    foto_key TEXT NOT NULL,
+    foto_key TEXT,
     local_photo_path TEXT,
     geo_lat REAL NOT NULL,
     geo_lng REAL NOT NULL,

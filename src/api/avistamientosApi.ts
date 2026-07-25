@@ -13,12 +13,18 @@ export class AvistamientosApi {
       reino: draft.reino,
       nombre_sugerido: draft.nombre_sugerido ?? null,
       descripcion: draft.descripcion ?? null,
-      foto_key: draft.foto_key,
+      foto_key: draft.foto_key ?? null,
       geo_lat: draft.geo_lat,
       geo_lng: draft.geo_lng,
       precision_metros: draft.precision_metros ?? null,
       observado_en: draft.observado_en,
     });
+  }
+
+  compartir(remoteId: number): Promise<CreateAvistamientoResponse> {
+    return this.client.patch<CreateAvistamientoResponse>(
+      `/api/v1/avistamientos/${remoteId}/compartir`,
+    );
   }
 }
 
