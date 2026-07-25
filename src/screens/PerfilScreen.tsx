@@ -9,7 +9,6 @@ import {runInitialSpeciesSync} from '../sync/initialSync';
 import type {LocalAvistamiento} from '../types/avistamiento';
 
 interface PerfilScreenProps {
-  onBack: () => void;
   onOpenCamera: () => void;
 }
 
@@ -24,7 +23,7 @@ const syncStatusLabel: Record<LocalAvistamiento['sync_status'], string> = {
   failed: 'Falló la sincronización',
 };
 
-export const PerfilScreen = ({onBack, onOpenCamera}: PerfilScreenProps): React.JSX.Element => {
+export const PerfilScreen = ({onOpenCamera}: PerfilScreenProps): React.JSX.Element => {
   const {logout, refreshProfile, user} = useAuth();
   const [syncStatus, setSyncStatus] = useState<string | null>(null);
   const [isSyncing, setIsSyncing] = useState(false);
@@ -84,10 +83,6 @@ export const PerfilScreen = ({onBack, onOpenCamera}: PerfilScreenProps): React.J
 
   return (
     <View style={styles.container}>
-      <Pressable accessibilityRole="button" onPress={onBack} style={styles.backButton}>
-        <Text style={styles.backButtonText}>← Biblioteca</Text>
-      </Pressable>
-
       <View style={styles.card}>
         <Text style={styles.title}>Perfil</Text>
         <Text style={styles.name}>{user?.name || user?.email}</Text>
@@ -178,14 +173,6 @@ const styles = StyleSheet.create({
     backgroundColor: colors.background,
     flex: 1,
     padding: spacing.lg,
-  },
-  backButton: {
-    marginBottom: spacing.lg,
-  },
-  backButtonText: {
-    color: colors.primary,
-    fontSize: 16,
-    fontWeight: '700',
   },
   card: {
     backgroundColor: colors.surface,
