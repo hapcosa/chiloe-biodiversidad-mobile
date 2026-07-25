@@ -26,7 +26,6 @@ import {
 import type {Reino, Species} from '../types/domain';
 
 interface BibliotecaScreenProps {
-  onOpenProfile: () => void;
   onSelectSpecies: (species: Species) => void;
 }
 
@@ -40,7 +39,6 @@ const reinoOptions: Array<Reino | undefined> = [
 ];
 
 export const BibliotecaScreen = ({
-  onOpenProfile,
   onSelectSpecies,
 }: BibliotecaScreenProps): React.JSX.Element => {
   const [species, setSpecies] = useState<Species[]>([]);
@@ -158,9 +156,6 @@ export const BibliotecaScreen = ({
           <Text style={styles.title}>Biblioteca</Text>
           <Text style={styles.subtitle}>Catálogo multi-reino de la biodiversidad</Text>
         </View>
-        <Pressable accessibilityRole="button" onPress={onOpenProfile} style={styles.profileButton}>
-          <Text style={styles.profileButtonText}>Perfil</Text>
-        </Pressable>
       </View>
 
       <TextInput
@@ -249,17 +244,6 @@ const styles = StyleSheet.create({
   subtitle: {
     color: colors.muted,
     marginTop: spacing.xs,
-  },
-  profileButton: {
-    borderColor: colors.primary,
-    borderRadius: 999,
-    borderWidth: 1,
-    paddingHorizontal: spacing.lg,
-    paddingVertical: spacing.sm,
-  },
-  profileButtonText: {
-    color: colors.primary,
-    fontWeight: '700',
   },
   searchInput: {
     backgroundColor: colors.surface,
