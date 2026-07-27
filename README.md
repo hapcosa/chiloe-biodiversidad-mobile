@@ -41,12 +41,18 @@ App Android (React Native bare CLI + módulo nativo C++ con NDK Camera2) para la
 
    ```bash
    adb reverse tcp:8080 tcp:8080
+   adb reverse tcp:9000 tcp:9000
    ```
 
    `appConfig.apiBaseUrl` ya apunta a `http://localhost:8080`, así que este comando
    basta tanto para emulador como para dispositivo físico — no hace falta editar
    el código para cada entorno. Configura además `googleWebClientId` con el OAuth
    Web Client ID usado también por `auth-service`.
+
+   El segundo reverse (puerto 9000) es necesario porque la subida de fotos
+   (avistamientos, avatar) va **directo a MinIO** con la URL presignada, sin pasar
+   por el gateway — sin este túnel, esas subidas fallan con "network request
+   failed" aunque el resto de la app funcione bien.
 
 3. Arranca Metro:
 
