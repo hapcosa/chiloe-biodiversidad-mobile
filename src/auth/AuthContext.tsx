@@ -20,6 +20,7 @@ interface AuthContextValue {
   loginWithGoogle: () => Promise<void>;
   logout: () => Promise<void>;
   refreshProfile: () => Promise<void>;
+  updateAvatar: (avatarUrl: string) => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextValue | undefined>(undefined);
@@ -101,6 +102,19 @@ export const AuthProvider = ({children}: {children: ReactNode}): React.JSX.Eleme
     await applySession(nextSession);
   }, [applySession, session]);
 
+  const updateAvatar = useCallback(
+    async (avatarUrl: string) => {
+      if (!session) {
+        return;
+      }
+
+      const user = await authApi.updateProfile({avatar: avatarUrl});
+      const nextSession = {...session, user};
+      await applySession(nextSession);
+    },
+    [applySession, session],
+  );
+
   const value = useMemo<AuthContextValue>(
     () => ({
       isLoading,
@@ -110,6 +124,7 @@ export const AuthProvider = ({children}: {children: ReactNode}): React.JSX.Eleme
       loginWithGoogle,
       logout,
       refreshProfile,
+      updateAvatar,
     }),
     [
       isLoading,
@@ -118,6 +133,7 @@ export const AuthProvider = ({children}: {children: ReactNode}): React.JSX.Eleme
       loginWithGoogle,
       logout,
       refreshProfile,
+      updateAvatar,
     ],
   );
 

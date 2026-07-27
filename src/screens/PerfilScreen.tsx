@@ -7,6 +7,8 @@ import {getCachedSpecies, getLibraryStats} from '../db/speciesCache';
 import {listLocalAvistamientos} from '../db/mutationQueue';
 import {listSavedSpeciesIds} from '../db/savedSpecies';
 import {listViewedSpeciesIds} from '../db/speciesViewed';
+import {openCamera} from '../native/ChiloeCamera';
+import {uploadLocalPhotoPublicUrl} from '../native/photoUpload';
 import {colors, spacing} from '../styles/theme';
 import {runInitialSpeciesSync} from '../sync/initialSync';
 import type {LocalAvistamiento} from '../types/avistamiento';
@@ -34,9 +36,11 @@ const syncStatusLabel: Record<LocalAvistamiento['sync_status'], string> = {
 };
 
 export const PerfilScreen = ({onOpenCamera}: PerfilScreenProps): React.JSX.Element => {
-  const {logout, refreshProfile, user} = useAuth();
+  const {logout, refreshProfile, updateAvatar, user} = useAuth();
   const [syncStatus, setSyncStatus] = useState<string | null>(null);
   const [isSyncing, setIsSyncing] = useState(false);
+  const [isUploadingAvatar, setIsUploadingAvatar] = useState(false);
+  const [avatarError, setAvatarError] = useState<string | null>(null);
   const [encuentros, setEncuentros] = useState<EncuentroConNombre[]>([]);
   const [sharingId, setSharingId] = useState<string | null>(null);
   const [stats, setStats] = useState<ExploradorStats>({
@@ -121,6 +125,23 @@ export const PerfilScreen = ({onOpenCamera}: PerfilScreenProps): React.JSX.Eleme
     }
   };
 
+  const pickAvatar = async (): Promise<void> => {
+    setAvatarError(null);
+    setIsUploadingAvatar(true);
+    let session = null;
+    try {
+      session = await openCamera({lens: 'front'});
+      const captured = await session.capture();
+      const publicUrl = await uploadLocalPhotoPublicUrl(captured.filePath, 'perfiles-fotos');
+      await updateAvatar(publicUrl);
+    } catch (error) {
+      setAvatarError(error instanceof Error ? error.message : 'No se pudo actualizar el avatar');
+    } finally {
+      await session?.close();
+      setIsUploadingAvatar(false);
+    }
+  };
+
   const progresoPct =
     stats.totalEspecies > 0 ? Math.round((stats.descubiertas / stats.totalEspecies) * 100) : 0;
 
@@ -131,14 +152,28 @@ export const PerfilScreen = ({onOpenCamera}: PerfilScreenProps): React.JSX.Eleme
       <Text style={styles.subtitle}>Un registro personal de tu viaje por la biodiversidad chilota.</Text>
 
       <View style={styles.profileCard}>
-        <View style={styles.avatar}>
-          <Text style={styles.avatarEmoji}>🧭</Text>
-        </View>
+        <Pressable
+          accessibilityRole="button"
+          disabled={isUploadingAvatar}
+          onPress={pickAvatar}
+          style={styles.avatar}>
+          {isUploadingAvatar ? (
+            <ActivityIndicator color={colors.surface} />
+          ) : user?.avatar ? (
+            <Image source={{uri: user.avatar}} style={styles.avatarImage} />
+          ) : (
+            <Text style={styles.avatarEmoji}>🧭</Text>
+          )}
+          <View style={styles.avatarEditBadge}>
+            <Text style={styles.avatarEditBadgeText}>✎</Text>
+          </View>
+        </Pressable>
         <View style={styles.profileInfo}>
           <Text style={styles.profileName}>{user?.name || user?.email}</Text>
           <Text style={styles.profileMeta}>{user?.email}</Text>
         </View>
       </View>
+      {avatarError ? <Text style={styles.avatarErrorText}>{avatarError}</Text> : null}
 
       <View style={styles.statsRow}>
         <View style={styles.statCard}>
@@ -285,10 +320,36 @@ const styles = StyleSheet.create({
     borderRadius: 999,
     height: 56,
     justifyContent: 'center',
+    overflow: 'hidden',
     width: 56,
+  },
+  avatarImage: {
+    height: '100%',
+    width: '100%',
   },
   avatarEmoji: {
     fontSize: 26,
+  },
+  avatarEditBadge: {
+    alignItems: 'center',
+    backgroundColor: colors.secondary,
+    borderRadius: 999,
+    bottom: -2,
+    height: 20,
+    justifyContent: 'center',
+    position: 'absolute',
+    right: -2,
+    width: 20,
+  },
+  avatarEditBadgeText: {
+    color: colors.primaryDark,
+    fontSize: 11,
+    fontWeight: '800',
+  },
+  avatarErrorText: {
+    color: colors.danger,
+    fontSize: 13,
+    marginTop: spacing.sm,
   },
   profileInfo: {
     flex: 1,
