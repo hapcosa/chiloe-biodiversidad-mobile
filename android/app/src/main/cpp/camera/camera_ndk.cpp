@@ -62,9 +62,30 @@ void onDeviceError(void*, ACameraDevice*, int error) {
     __android_log_print(ANDROID_LOG_ERROR, LogTag, "camera error: %d", error);
 }
 
-void onSessionClosed(void*, ACameraCaptureSession*) {}
-void onSessionReady(void*, ACameraCaptureSession*) {}
-void onSessionActive(void*, ACameraCaptureSession*) {}
+void onSessionClosed(void*, ACameraCaptureSession*) {
+    __android_log_print(ANDROID_LOG_DEBUG, LogTag, "session onClosed");
+}
+void onSessionReady(void*, ACameraCaptureSession*) {
+    __android_log_print(ANDROID_LOG_DEBUG, LogTag, "session onReady");
+}
+void onSessionActive(void*, ACameraCaptureSession*) {
+    __android_log_print(ANDROID_LOG_DEBUG, LogTag, "session onActive");
+}
+
+// setRepeatingRequest se llamaba con callbacks=nullptr, así que un fallo por
+// request (p.ej. target/formato inválido) no se veía en absoluto en logcat.
+void onPreviewCaptureFailed(void*, ACameraCaptureSession*, ACaptureRequest*, ACameraCaptureFailure* failure) {
+    __android_log_print(
+        ANDROID_LOG_ERROR,
+        LogTag,
+        "preview capture failed: reason=%d sequenceId=%d",
+        failure != nullptr ? failure->reason : -1,
+        failure != nullptr ? failure->sequenceId : -1);
+}
+
+void onPreviewSequenceAborted(void*, ACameraCaptureSession*, int sequenceId) {
+    __android_log_print(ANDROID_LOG_ERROR, LogTag, "preview sequence aborted: sequenceId=%d", sequenceId);
+}
 
 void onImageAvailable(void* contextPtr, AImageReader* reader) {
     auto* context = static_cast<ImageCaptureContext*>(contextPtr);
@@ -297,9 +318,14 @@ struct CameraSession::Impl {
             checkCamera(ACaptureRequest_addTarget(previewRequest, previewTarget), "failed to add preview target");
             applyControls(previewRequest);
 
+            ACameraCaptureSession_captureCallbacks previewCallbacks{};
+            previewCallbacks.context = nullptr;
+            previewCallbacks.onCaptureFailed = onPreviewCaptureFailed;
+            previewCallbacks.onCaptureSequenceAborted = onPreviewSequenceAborted;
+
             ACaptureRequest* requests[] = {previewRequest};
             checkCamera(
-                ACameraCaptureSession_setRepeatingRequest(session, nullptr, 1, requests, nullptr),
+                ACameraCaptureSession_setRepeatingRequest(session, &previewCallbacks, 1, requests, nullptr),
                 "failed to start preview");
         }
     }
@@ -437,7 +463,20 @@ void CameraSession::setPreviewSurface(ANativeWindow* window) {
 
     const auto previewSize = chooseStreamSize(
         impl_->manager, impl_->cameraId, AIMAGE_FORMAT_PRIVATE, MaxPreviewWidth, MaxPreviewHeight);
-    ANativeWindow_setBuffersGeometry(window, previewSize.width, previewSize.height, 0);
+    __android_log_print(
+        ANDROID_LOG_DEBUG,
+        LogTag,
+        "setPreviewSurface: chosen size=%dx%d (default %dx%d means no matching stream config was found)",
+        previewSize.width,
+        previewSize.height,
+        Size{}.width,
+        Size{}.height);
+    const auto geometryResult =
+        ANativeWindow_setBuffersGeometry(window, previewSize.width, previewSize.height, 0);
+    if (geometryResult != 0) {
+        __android_log_print(
+            ANDROID_LOG_ERROR, LogTag, "ANativeWindow_setBuffersGeometry failed: %d", geometryResult);
+    }
 
     impl_->previewWindow = window;
     checkCamera(

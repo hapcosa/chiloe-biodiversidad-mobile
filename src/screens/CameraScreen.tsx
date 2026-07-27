@@ -1,5 +1,5 @@
 import React, {useEffect, useState} from 'react';
-import {ActivityIndicator, Pressable, StyleSheet, Text, View} from 'react-native';
+import {ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View} from 'react-native';
 import {CameraPreview} from '../native/CameraPreview';
 import {
   openCamera,
@@ -74,7 +74,9 @@ export const CameraScreen = ({onBack}: CameraScreenProps): React.JSX.Element => 
     });
 
   return (
-    <View style={styles.container}>
+    <ScrollView
+      style={styles.container}
+      contentContainerStyle={styles.contentContainer}>
       <Pressable accessibilityRole="button" onPress={onBack} style={styles.backButton}>
         <Text style={styles.backButtonText}>← Volver</Text>
       </Pressable>
@@ -138,7 +140,7 @@ export const CameraScreen = ({onBack}: CameraScreenProps): React.JSX.Element => 
           </Text>
         </View>
       ) : null}
-    </View>
+    </ScrollView>
   );
 };
 
@@ -146,6 +148,8 @@ const styles = StyleSheet.create({
   container: {
     backgroundColor: colors.background,
     flex: 1,
+  },
+  contentContainer: {
     padding: spacing.lg,
   },
   backButton: {
