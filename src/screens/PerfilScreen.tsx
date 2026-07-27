@@ -9,6 +9,7 @@ import {listSavedSpeciesIds} from '../db/savedSpecies';
 import {listViewedSpeciesIds} from '../db/speciesViewed';
 import {openCamera} from '../native/ChiloeCamera';
 import {uploadLocalPhotoPublicUrl} from '../native/photoUpload';
+import {shareEncuentroToStory} from '../native/socialShare';
 import {colors, spacing} from '../styles/theme';
 import {runInitialSpeciesSync} from '../sync/initialSync';
 import type {LocalAvistamiento} from '../types/avistamiento';
@@ -43,6 +44,8 @@ export const PerfilScreen = ({onOpenCamera}: PerfilScreenProps): React.JSX.Eleme
   const [avatarError, setAvatarError] = useState<string | null>(null);
   const [encuentros, setEncuentros] = useState<EncuentroConNombre[]>([]);
   const [sharingId, setSharingId] = useState<string | null>(null);
+  const [socialSharingId, setSocialSharingId] = useState<string | null>(null);
+  const [socialShareError, setSocialShareError] = useState<string | null>(null);
   const [stats, setStats] = useState<ExploradorStats>({
     descubiertas: 0,
     guardadas: 0,
@@ -105,6 +108,23 @@ export const PerfilScreen = ({onOpenCamera}: PerfilScreenProps): React.JSX.Eleme
       // El estado local no cambia; el usuario puede reintentar.
     } finally {
       setSharingId(null);
+    }
+  };
+
+  const shareToSocial = async (encuentro: EncuentroConNombre): Promise<void> => {
+    if (!encuentro.local_photo_path) {
+      return;
+    }
+    setSocialShareError(null);
+    setSocialSharingId(encuentro.local_id);
+    try {
+      await shareEncuentroToStory(encuentro.local_photo_path);
+    } catch (error) {
+      setSocialShareError(
+        error instanceof Error ? error.message : 'No se pudo compartir la foto',
+      );
+    } finally {
+      setSocialSharingId(null);
     }
   };
 
@@ -259,23 +279,39 @@ export const PerfilScreen = ({onOpenCamera}: PerfilScreenProps): React.JSX.Eleme
                 {new Date(encuentro.observado_en).toLocaleDateString('es-CL')} ·{' '}
                 {syncStatusLabel[encuentro.sync_status]}
               </Text>
-              {encuentro.remote_id ? (
-                <Pressable
-                  accessibilityRole="button"
-                  disabled={sharingId === encuentro.local_id}
-                  onPress={() => compartir(encuentro)}
-                  style={styles.shareButton}>
-                  <Text style={styles.shareButtonText}>
-                    {sharingId === encuentro.local_id
-                      ? 'Compartiendo...'
-                      : 'Compartir con la comunidad'}
-                  </Text>
-                </Pressable>
-              ) : null}
+              <View style={styles.encuentroActions}>
+                {encuentro.remote_id ? (
+                  <Pressable
+                    accessibilityRole="button"
+                    disabled={sharingId === encuentro.local_id}
+                    onPress={() => compartir(encuentro)}
+                    style={styles.shareButton}>
+                    <Text style={styles.shareButtonText}>
+                      {sharingId === encuentro.local_id
+                        ? 'Compartiendo...'
+                        : 'Compartir con la comunidad'}
+                    </Text>
+                  </Pressable>
+                ) : null}
+                {encuentro.local_photo_path ? (
+                  <Pressable
+                    accessibilityRole="button"
+                    disabled={socialSharingId === encuentro.local_id}
+                    onPress={() => shareToSocial(encuentro)}
+                    style={styles.shareButton}>
+                    <Text style={styles.shareButtonText}>
+                      {socialSharingId === encuentro.local_id
+                        ? 'Abriendo...'
+                        : '📤 Instagram/Facebook Stories'}
+                    </Text>
+                  </Pressable>
+                ) : null}
+              </View>
             </View>
           </View>
         ))
       )}
+      {socialShareError ? <Text style={styles.avatarErrorText}>{socialShareError}</Text> : null}
 
       <Pressable accessibilityRole="button" onPress={logout} style={styles.logoutButton}>
         <Text style={styles.logoutButtonText}>Cerrar sesión</Text>
@@ -524,6 +560,11 @@ const styles = StyleSheet.create({
     color: colors.muted,
     fontSize: 12,
     marginTop: spacing.xs,
+  },
+  encuentroActions: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: spacing.md,
   },
   shareButton: {
     marginTop: spacing.xs,

@@ -12,6 +12,7 @@ import com.facebook.react.defaults.DefaultReactNativeHost
 import com.facebook.react.soloader.OpenSourceMergedSoMapping
 import com.facebook.soloader.SoLoader
 import cl.chiloe.biodiversidad.camera.ChiloeCameraPackage
+import cl.chiloe.biodiversidad.share.SocialSharePackage
 
 class MainApplication : Application(), ReactApplication {
     override val reactNativeHost: ReactNativeHost =
@@ -19,6 +20,7 @@ class MainApplication : Application(), ReactApplication {
             override fun getPackages(): List<ReactPackage> =
                 PackageList(this).packages.apply {
                     add(ChiloeCameraPackage())
+                    add(SocialSharePackage())
                 }
 
             override fun getJSMainModuleName(): String = "index"
