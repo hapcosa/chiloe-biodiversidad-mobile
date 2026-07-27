@@ -15,14 +15,7 @@ import {speciesApi} from '../api';
 import {initializeDatabase} from '../db/connection';
 import {listCachedSpecies, upsertSpecies} from '../db/speciesCache';
 import {listViewedSpeciesIds, markSpeciesViewed} from '../db/speciesViewed';
-import {
-  colors,
-  conservacionColors,
-  reinoColors,
-  reinoEmoji,
-  reinoLabels,
-  spacing,
-} from '../styles/theme';
+import {colors, reinoColors, reinoEmoji, reinoLabels, spacing} from '../styles/theme';
 import type {Reino, Species} from '../types/domain';
 
 interface BibliotecaScreenProps {
@@ -37,6 +30,8 @@ const reinoOptions: Array<Reino | undefined> = [
   'protista',
   'monera',
 ];
+
+const catalogNumber = (id: number): string => `N° ${String(id).padStart(3, '0')}`;
 
 export const BibliotecaScreen = ({
   onSelectSpecies,
@@ -106,14 +101,13 @@ export const BibliotecaScreen = ({
     const cover = item.imagenes_urls?.[0];
     const isViewed = viewedIds.has(item.id);
     const reinoColor = reinoColors[item.reino];
-    const conservacionColor = conservacionColors[item.estado_conservacion] ?? colors.muted;
 
     return (
       <Pressable
         accessibilityRole="button"
         onPress={() => openSpecies(item)}
         style={({pressed}) => [styles.card, pressed && styles.cardPressed]}>
-        <View style={[styles.cardMedia, {borderColor: reinoColor}]}>
+        <View style={styles.cardMedia}>
           {cover ? (
             <Image resizeMode="cover" source={{uri: cover}} style={styles.cardImage} />
           ) : (
@@ -121,7 +115,12 @@ export const BibliotecaScreen = ({
               <Text style={styles.cardPlaceholderEmoji}>{reinoEmoji[item.reino]}</Text>
             </View>
           )}
-          <View style={[styles.reinoDot, {backgroundColor: reinoColor}]} />
+          <View style={styles.catalogTag}>
+            <Text style={styles.catalogTagText}>{catalogNumber(item.id)}</Text>
+          </View>
+          <View style={[styles.reinoBadge, {backgroundColor: reinoColor}]}>
+            <Text style={styles.reinoBadgeEmoji}>{reinoEmoji[item.reino]}</Text>
+          </View>
           {isViewed ? (
             <View style={styles.viewedBadge}>
               <Text style={styles.viewedBadgeText}>✓</Text>
@@ -134,37 +133,30 @@ export const BibliotecaScreen = ({
           ) : null}
         </View>
 
+        <Text style={[styles.reinoLabel, {color: reinoColor}]}>{reinoLabels[item.reino]}</Text>
         <Text numberOfLines={1} style={styles.commonName}>
           {item.nombre_comun || item.nombre_cientifico}
         </Text>
         <Text numberOfLines={1} style={styles.scientificName}>
           {item.nombre_cientifico}
         </Text>
-
-        <View style={styles.cardFooter}>
-          <View style={[styles.conservacionDot, {backgroundColor: conservacionColor}]} />
-          <Text style={styles.conservacionText}>{item.estado_conservacion || '—'}</Text>
-        </View>
       </Pressable>
     );
   };
 
   return (
     <View style={styles.container}>
-      <View style={styles.header}>
-        <View>
-          <Text style={styles.title}>Biblioteca</Text>
-          <Text style={styles.subtitle}>Catálogo multi-reino de la biodiversidad</Text>
-        </View>
+      <View style={styles.searchRow}>
+        <Text style={styles.searchIcon}>🔍</Text>
+        <TextInput
+          autoCapitalize="none"
+          onChangeText={setQuery}
+          placeholder="Buscar especie, nombre científico o local..."
+          placeholderTextColor={colors.muted}
+          style={styles.searchInput}
+          value={query}
+        />
       </View>
-
-      <TextInput
-        autoCapitalize="none"
-        onChangeText={setQuery}
-        placeholder="Buscar por nombre común o científico"
-        style={styles.searchInput}
-        value={query}
-      />
 
       <View style={styles.filters}>
         {reinoOptions.map(reino => {
@@ -191,11 +183,6 @@ export const BibliotecaScreen = ({
 
       {error ? <Text style={styles.statusText}>{error}</Text> : null}
       {isOfflineData ? <Text style={styles.offlineText}>Modo offline</Text> : null}
-      {species.length > 0 ? (
-        <Text style={styles.collectionText}>
-          {viewedIds.size} de {species.length} vistas en esta lista
-        </Text>
-      ) : null}
 
       {isLoading && species.length === 0 ? (
         <ActivityIndicator color={colors.primary} style={styles.loader} />
@@ -230,30 +217,24 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.lg,
     paddingTop: spacing.lg,
   },
-  header: {
+  searchRow: {
     alignItems: 'center',
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginBottom: spacing.lg,
-  },
-  title: {
-    color: colors.primaryDark,
-    fontSize: 28,
-    fontWeight: '800',
-  },
-  subtitle: {
-    color: colors.muted,
-    marginTop: spacing.xs,
-  },
-  searchInput: {
     backgroundColor: colors.surface,
     borderColor: colors.border,
     borderRadius: 14,
     borderWidth: 1,
-    color: colors.text,
-    fontSize: 16,
+    flexDirection: 'row',
     marginBottom: spacing.md,
     paddingHorizontal: spacing.lg,
+  },
+  searchIcon: {
+    fontSize: 16,
+    marginRight: spacing.sm,
+  },
+  searchInput: {
+    color: colors.text,
+    flex: 1,
+    fontSize: 16,
     paddingVertical: spacing.md,
   },
   filters: {
@@ -285,11 +266,6 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     marginBottom: spacing.sm,
   },
-  collectionText: {
-    color: colors.muted,
-    fontWeight: '700',
-    marginBottom: spacing.sm,
-  },
   loader: {
     marginTop: spacing.xl,
   },
@@ -298,6 +274,7 @@ const styles = StyleSheet.create({
   },
   listContent: {
     paddingBottom: spacing.xl,
+    paddingTop: spacing.sm,
   },
   card: {
     backgroundColor: colors.surface,
@@ -315,7 +292,6 @@ const styles = StyleSheet.create({
   cardMedia: {
     aspectRatio: 1,
     borderRadius: 14,
-    borderWidth: 3,
     marginBottom: spacing.sm,
     overflow: 'hidden',
   },
@@ -332,15 +308,35 @@ const styles = StyleSheet.create({
   cardPlaceholderEmoji: {
     fontSize: 44,
   },
-  reinoDot: {
+  catalogTag: {
+    backgroundColor: 'rgba(0,0,0,0.55)',
     borderRadius: 999,
-    height: 14,
+    left: spacing.xs,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 2,
+    position: 'absolute',
+    top: spacing.xs,
+  },
+  catalogTagText: {
+    color: colors.surface,
+    fontSize: 10,
+    fontWeight: '700',
+  },
+  reinoBadge: {
+    alignItems: 'center',
+    borderRadius: 999,
+    height: 26,
+    justifyContent: 'center',
     position: 'absolute',
     right: spacing.xs,
     top: spacing.xs,
-    width: 14,
+    width: 26,
+  },
+  reinoBadgeEmoji: {
+    fontSize: 13,
   },
   viewedBadge: {
+    alignItems: 'center',
     backgroundColor: colors.success,
     borderRadius: 999,
     bottom: spacing.xs,
@@ -349,7 +345,6 @@ const styles = StyleSheet.create({
     left: spacing.xs,
     position: 'absolute',
     width: 22,
-    alignItems: 'center',
   },
   viewedBadgeText: {
     color: colors.surface,
@@ -370,32 +365,23 @@ const styles = StyleSheet.create({
     fontSize: 10,
     fontWeight: '800',
   },
+  reinoLabel: {
+    fontSize: 11,
+    fontWeight: '800',
+    letterSpacing: 0.5,
+    textTransform: 'uppercase',
+  },
   commonName: {
     color: colors.text,
     fontSize: 15,
     fontWeight: '800',
+    marginTop: 2,
   },
   scientificName: {
     color: colors.primaryDark,
     fontSize: 12,
     fontStyle: 'italic',
     marginTop: 2,
-  },
-  cardFooter: {
-    alignItems: 'center',
-    flexDirection: 'row',
-    gap: spacing.xs,
-    marginTop: spacing.xs,
-  },
-  conservacionDot: {
-    borderRadius: 999,
-    height: 8,
-    width: 8,
-  },
-  conservacionText: {
-    color: colors.muted,
-    fontSize: 11,
-    fontWeight: '700',
   },
   emptyText: {
     color: colors.muted,
