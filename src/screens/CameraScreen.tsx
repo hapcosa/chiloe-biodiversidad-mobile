@@ -1,5 +1,6 @@
 import React, {useEffect, useState} from 'react';
 import {ActivityIndicator, Pressable, StyleSheet, Text, View} from 'react-native';
+import {CameraPreview} from '../native/CameraPreview';
 import {
   openCamera,
   type CameraCapture,
@@ -81,10 +82,16 @@ export const CameraScreen = ({onBack}: CameraScreenProps): React.JSX.Element => 
       <View style={styles.card}>
         <Text style={styles.title}>Cámara NDK</Text>
         <Text style={styles.subtitle}>
-          MVP sin preview: abre cámara trasera, aplica controles manuales y captura JPEG.
+          Abre la cámara trasera, aplica controles manuales y captura JPEG con preview en vivo.
         </Text>
         <Text style={styles.status}>{status}</Text>
       </View>
+
+      {session ? (
+        <View style={styles.previewContainer}>
+          <CameraPreview sessionId={session.sessionId} style={styles.previewSurface} />
+        </View>
+      ) : null}
 
       <Pressable
         accessibilityRole="button"
@@ -171,6 +178,17 @@ const styles = StyleSheet.create({
     color: colors.text,
     fontWeight: '700',
     marginTop: spacing.lg,
+  },
+  previewContainer: {
+    aspectRatio: 3 / 4,
+    backgroundColor: '#000',
+    borderRadius: 18,
+    marginBottom: spacing.lg,
+    overflow: 'hidden',
+    width: '100%',
+  },
+  previewSurface: {
+    flex: 1,
   },
   primaryButton: {
     alignItems: 'center',
