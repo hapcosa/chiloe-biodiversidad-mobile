@@ -1,5 +1,6 @@
 #include "camera_ndk.hpp"
 
+#include <android/native_window_jni.h>
 #include <jni.h>
 
 #include <atomic>
@@ -126,6 +127,35 @@ Java_cl_chiloe_biodiversidad_camera_ChiloeCameraModule_nativeCaptureJpeg(
     } catch (const std::exception& error) {
         throwJava(env, error);
         return nullptr;
+    }
+}
+
+extern "C" JNIEXPORT void JNICALL
+Java_cl_chiloe_biodiversidad_camera_ChiloeCameraModule_nativeSetPreviewSurface(
+    JNIEnv* env,
+    jobject,
+    jint sessionId,
+    jobject surface) {
+    try {
+        ANativeWindow* window = ANativeWindow_fromSurface(env, surface);
+        if (window == nullptr) {
+            throw std::runtime_error("invalid preview surface");
+        }
+        getSession(sessionId).setPreviewSurface(window);
+    } catch (const std::exception& error) {
+        throwJava(env, error);
+    }
+}
+
+extern "C" JNIEXPORT void JNICALL
+Java_cl_chiloe_biodiversidad_camera_ChiloeCameraModule_nativeClearPreviewSurface(
+    JNIEnv* env,
+    jobject,
+    jint sessionId) {
+    try {
+        getSession(sessionId).clearPreviewSurface();
+    } catch (const std::exception& error) {
+        throwJava(env, error);
     }
 }
 

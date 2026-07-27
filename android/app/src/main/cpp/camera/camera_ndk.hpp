@@ -1,5 +1,7 @@
 #pragma once
 
+#include <android/native_window.h>
+
 #include <memory>
 #include <string>
 
@@ -26,6 +28,11 @@ public:
     void setFocusDistance(float distance);
     void setAutoFocus();
     CaptureResult captureJpeg(const std::string& outputPath);
+
+    // window es un ANativeWindow ya adquirido (ANativeWindow_fromSurface) que
+    // el caller sigue siendo dueño de liberar tras clearPreviewSurface().
+    void setPreviewSurface(ANativeWindow* window);
+    void clearPreviewSurface();
 
 private:
     struct Impl;

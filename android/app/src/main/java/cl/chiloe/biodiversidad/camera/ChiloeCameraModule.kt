@@ -2,6 +2,7 @@ package cl.chiloe.biodiversidad.camera
 
 import android.Manifest
 import android.content.pm.PackageManager
+import android.view.Surface
 import com.facebook.react.bridge.Arguments
 import com.facebook.react.bridge.Promise
 import com.facebook.react.bridge.ReactApplicationContext
@@ -99,6 +100,17 @@ class ChiloeCameraModule(
         }
     }
 
+    // Llamado directamente (sin pasar por el puente JS/Promise) por
+    // ChiloeCameraPreviewView, que vive en el mismo proceso Kotlin, cuando su
+    // SurfaceTexture queda disponible o se destruye.
+    fun attachPreviewSurface(sessionId: Int, surface: Surface) {
+        nativeSetPreviewSurface(sessionId, surface)
+    }
+
+    fun detachPreviewSurface(sessionId: Int) {
+        nativeClearPreviewSurface(sessionId)
+    }
+
     private fun hasCameraPermission(): Boolean =
         reactContext.checkSelfPermission(Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED
 
@@ -108,6 +120,8 @@ class ChiloeCameraModule(
     private external fun nativeSetFocusDistance(sessionId: Int, distance: Float)
     private external fun nativeSetAutoFocus(sessionId: Int)
     private external fun nativeCaptureJpeg(sessionId: Int, outputPath: String): IntArray
+    private external fun nativeSetPreviewSurface(sessionId: Int, surface: Surface)
+    private external fun nativeClearPreviewSurface(sessionId: Int)
     private external fun nativeClose(sessionId: Int)
 }
 
