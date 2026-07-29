@@ -1,24 +1,54 @@
-import React, {useEffect, useState} from 'react';
+import {createBottomTabNavigator} from '@react-navigation/bottom-tabs';
+import React, {useEffect} from 'react';
 import {ActivityIndicator, StyleSheet, Text, View} from 'react-native';
 import {useAuth} from '../auth/AuthContext';
 import {BibliotecaScreen} from '../screens/BibliotecaScreen';
-import {CameraScreen} from '../screens/CameraScreen';
-import {EspecieDetailScreen} from '../screens/EspecieDetailScreen';
+import {GuardadosScreen} from '../screens/GuardadosScreen';
+import {HomeScreen} from '../screens/HomeScreen';
 import {LoginScreen} from '../screens/LoginScreen';
-import {PerfilScreen} from '../screens/PerfilScreen';
 import {colors} from '../styles/theme';
 import {startMutationSyncWorker, syncPendingMutations} from '../sync/mutationSync';
-import type {Species} from '../types/domain';
+import {PerfilStackNavigator} from './PerfilStackNavigator';
+import {SpeciesStackNavigator} from './SpeciesStackNavigator';
 
-type Route =
-  | {name: 'biblioteca'}
-  | {name: 'camera'}
-  | {name: 'detalle'; species: Species}
-  | {name: 'perfil'};
+type RootTabParamList = {
+  Home: undefined;
+  Explorar: undefined;
+  Guardados: undefined;
+  Perfil: undefined;
+};
+
+const tabIcons: Record<keyof RootTabParamList, string> = {
+  Home: '🏠',
+  Explorar: '🔎',
+  Guardados: '🔖',
+  Perfil: '🙋',
+};
+
+const Tab = createBottomTabNavigator<RootTabParamList>();
+
+const HomeStack = (): React.JSX.Element => <SpeciesStackNavigator ListaScreen={HomeScreen} />;
+
+const ExplorarStack = (): React.JSX.Element => (
+  <SpeciesStackNavigator ListaScreen={BibliotecaScreen} />
+);
+
+const GuardadosStack = (): React.JSX.Element => (
+  <SpeciesStackNavigator ListaScreen={GuardadosScreen} />
+);
+
+interface TabBarIconProps {
+  routeName: keyof RootTabParamList;
+  color: string;
+  size: number;
+}
+
+const TabBarIcon = ({routeName, color, size}: TabBarIconProps): React.JSX.Element => (
+  <Text style={{color, fontSize: size}}>{tabIcons[routeName]}</Text>
+);
 
 export const AppNavigator = (): React.JSX.Element => {
   const {isLoading, session} = useAuth();
-  const [route, setRoute] = useState<Route>({name: 'biblioteca'});
 
   useEffect(() => {
     if (!session) {
@@ -42,33 +72,22 @@ export const AppNavigator = (): React.JSX.Element => {
     return <LoginScreen />;
   }
 
-  if (route.name === 'detalle') {
-    return (
-      <EspecieDetailScreen
-        onBack={() => setRoute({name: 'biblioteca'})}
-        species={route.species}
-      />
-    );
-  }
-
-  if (route.name === 'perfil') {
-    return (
-      <PerfilScreen
-        onBack={() => setRoute({name: 'biblioteca'})}
-        onOpenCamera={() => setRoute({name: 'camera'})}
-      />
-    );
-  }
-
-  if (route.name === 'camera') {
-    return <CameraScreen onBack={() => setRoute({name: 'perfil'})} />;
-  }
-
   return (
-    <BibliotecaScreen
-      onOpenProfile={() => setRoute({name: 'perfil'})}
-      onSelectSpecies={species => setRoute({name: 'detalle', species})}
-    />
+    <Tab.Navigator
+      screenOptions={({route}) => ({
+        headerShown: false,
+        tabBarActiveTintColor: colors.primary,
+        tabBarIcon: ({color, size}) => (
+          <TabBarIcon color={color} routeName={route.name} size={size} />
+        ),
+        tabBarInactiveTintColor: colors.muted,
+        tabBarStyle: styles.tabBar,
+      })}>
+      <Tab.Screen component={HomeStack} name="Home" />
+      <Tab.Screen component={ExplorarStack} name="Explorar" />
+      <Tab.Screen component={GuardadosStack} name="Guardados" />
+      <Tab.Screen component={PerfilStackNavigator} name="Perfil" />
+    </Tab.Navigator>
   );
 };
 
@@ -82,5 +101,12 @@ const styles = StyleSheet.create({
   loadingText: {
     color: colors.muted,
     marginTop: 12,
+  },
+  tabBar: {
+    backgroundColor: colors.surface,
+    borderTopColor: colors.border,
+    height: 60,
+    paddingBottom: 8,
+    paddingTop: 6,
   },
 });

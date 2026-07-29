@@ -3,6 +3,7 @@ import {ApiClient} from './apiClient';
 import {AvistamientosApi} from './avistamientosApi';
 import {AuthApi} from './authApi';
 import {SpeciesApi} from './speciesApi';
+import {UploadsApi} from './uploadsApi';
 
 let currentAccessToken: string | null = null;
 
@@ -19,4 +20,5 @@ export const apiClient = new ApiClient({
 export const authApi = new AuthApi(apiClient);
 export const speciesApi = new SpeciesApi(apiClient);
 export const avistamientosApi = new AvistamientosApi(apiClient);
+export const uploadsApi = new UploadsApi(apiClient);
 

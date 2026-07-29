@@ -39,7 +39,7 @@ export const schemaStatements = [
     reino TEXT NOT NULL,
     nombre_sugerido TEXT,
     descripcion TEXT,
-    foto_key TEXT NOT NULL,
+    foto_key TEXT,
     local_photo_path TEXT,
     geo_lat REAL NOT NULL,
     geo_lng REAL NOT NULL,
@@ -65,5 +65,9 @@ export const schemaStatements = [
   `CREATE TABLE IF NOT EXISTS especies_vistas (
     especie_id INTEGER PRIMARY KEY,
     visto_en TEXT NOT NULL
+  )`,
+  `CREATE TABLE IF NOT EXISTS especies_guardadas (
+    especie_id INTEGER PRIMARY KEY,
+    guardado_en TEXT NOT NULL
   )`,
 ];

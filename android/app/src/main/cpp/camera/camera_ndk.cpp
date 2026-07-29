@@ -8,9 +8,11 @@
 #include <media/NdkImage.h>
 #include <media/NdkImageReader.h>
 
+#include <algorithm>
 #include <chrono>
 #include <condition_variable>
 #include <cstdint>
+#include <limits>
 #include <mutex>
 #include <stdexcept>
 #include <string>
@@ -22,6 +24,8 @@ namespace {
 
 constexpr const char* LogTag = "ChiloeCamera";
 constexpr int CaptureTimeoutSeconds = 10;
+constexpr int MaxPreviewWidth = 1920;
+constexpr int MaxPreviewHeight = 1080;
 
 struct Size {
     int width = 1280;
@@ -58,9 +62,30 @@ void onDeviceError(void*, ACameraDevice*, int error) {
     __android_log_print(ANDROID_LOG_ERROR, LogTag, "camera error: %d", error);
 }
 
-void onSessionClosed(void*, ACameraCaptureSession*) {}
-void onSessionReady(void*, ACameraCaptureSession*) {}
-void onSessionActive(void*, ACameraCaptureSession*) {}
+void onSessionClosed(void*, ACameraCaptureSession*) {
+    __android_log_print(ANDROID_LOG_DEBUG, LogTag, "session onClosed");
+}
+void onSessionReady(void*, ACameraCaptureSession*) {
+    __android_log_print(ANDROID_LOG_DEBUG, LogTag, "session onReady");
+}
+void onSessionActive(void*, ACameraCaptureSession*) {
+    __android_log_print(ANDROID_LOG_DEBUG, LogTag, "session onActive");
+}
+
+// setRepeatingRequest se llamaba con callbacks=nullptr, así que un fallo por
+// request (p.ej. target/formato inválido) no se veía en absoluto en logcat.
+void onPreviewCaptureFailed(void*, ACameraCaptureSession*, ACaptureRequest*, ACameraCaptureFailure* failure) {
+    __android_log_print(
+        ANDROID_LOG_ERROR,
+        LogTag,
+        "preview capture failed: reason=%d sequenceId=%d",
+        failure != nullptr ? failure->reason : -1,
+        failure != nullptr ? failure->sequenceId : -1);
+}
+
+void onPreviewSequenceAborted(void*, ACameraCaptureSession*, int sequenceId) {
+    __android_log_print(ANDROID_LOG_ERROR, LogTag, "preview sequence aborted: sequenceId=%d", sequenceId);
+}
 
 void onImageAvailable(void* contextPtr, AImageReader* reader) {
     auto* context = static_cast<ImageCaptureContext*>(contextPtr);
@@ -147,7 +172,14 @@ std::string selectCameraId(ACameraManager* manager, const std::string& lens) {
     return fallback;
 }
 
-Size chooseJpegSize(ACameraManager* manager, const std::string& cameraId) {
+// Elige el stream más grande disponible para `format` que no exceda
+// maxWidth/maxHeight (usar límites de int para "sin tope", como en JPEG).
+Size chooseStreamSize(
+    ACameraManager* manager,
+    const std::string& cameraId,
+    int32_t format,
+    int maxWidth,
+    int maxHeight) {
     ACameraMetadata* metadata = nullptr;
     if (ACameraManager_getCameraCharacteristics(manager, cameraId.c_str(), &metadata) != ACAMERA_OK) {
         return {};
@@ -160,17 +192,18 @@ Size chooseJpegSize(ACameraManager* manager, const std::string& cameraId) {
         &entry);
 
     Size selected;
-    long selectedArea = selected.width * selected.height;
+    long selectedArea = 0;
 
     if (status == ACAMERA_OK) {
         for (uint32_t index = 0; index + 3 < entry.count; index += 4) {
-            const int32_t format = entry.data.i32[index];
+            const int32_t streamFormat = entry.data.i32[index];
             const int32_t width = entry.data.i32[index + 1];
             const int32_t height = entry.data.i32[index + 2];
             const int32_t input = entry.data.i32[index + 3];
             const long area = static_cast<long>(width) * static_cast<long>(height);
 
-            if (format == AIMAGE_FORMAT_JPEG && input == 0 && area > selectedArea) {
+            if (streamFormat == format && input == 0 && width <= maxWidth && height <= maxHeight &&
+                area > selectedArea) {
                 selected = {width, height};
                 selectedArea = area;
             }
@@ -193,6 +226,109 @@ struct CameraSession::Impl {
     int iso = 0;
     double exposureMs = 0;
     float focusDistance = -1;
+
+    AImageReader* jpegReader = nullptr;
+    ANativeWindow* jpegWindow = nullptr;
+    ACaptureSessionOutput* jpegOutput = nullptr;
+    ImageCaptureContext captureContext;
+
+    // Propiedad del ANativeWindow del preview pasa a la sesión una vez
+    // recibido vía setPreviewSurface (liberado en clearPreviewSurface/close).
+    ANativeWindow* previewWindow = nullptr;
+    ACaptureSessionOutput* previewOutput = nullptr;
+    ACameraOutputTarget* previewTarget = nullptr;
+    ACaptureRequest* previewRequest = nullptr;
+
+    ACaptureSessionOutputContainer* outputs = nullptr;
+    ACameraCaptureSession* session = nullptr;
+
+    void applyControls(ACaptureRequest* request) const {
+        uint8_t aeMode = ACAMERA_CONTROL_AE_MODE_ON;
+        if (iso > 0 || exposureMs > 0) {
+            aeMode = ACAMERA_CONTROL_AE_MODE_OFF;
+            ACaptureRequest_setEntry_u8(request, ACAMERA_CONTROL_AE_MODE, 1, &aeMode);
+
+            if (iso > 0) {
+                const int32_t isoValue = iso;
+                ACaptureRequest_setEntry_i32(request, ACAMERA_SENSOR_SENSITIVITY, 1, &isoValue);
+            }
+
+            if (exposureMs > 0) {
+                const int64_t exposureNs = static_cast<int64_t>(exposureMs * 1000000.0);
+                ACaptureRequest_setEntry_i64(request, ACAMERA_SENSOR_EXPOSURE_TIME, 1, &exposureNs);
+            }
+        } else {
+            ACaptureRequest_setEntry_u8(request, ACAMERA_CONTROL_AE_MODE, 1, &aeMode);
+        }
+
+        uint8_t afMode = ACAMERA_CONTROL_AF_MODE_CONTINUOUS_PICTURE;
+        if (focusDistance >= 0) {
+            afMode = ACAMERA_CONTROL_AF_MODE_OFF;
+            ACaptureRequest_setEntry_u8(request, ACAMERA_CONTROL_AF_MODE, 1, &afMode);
+            ACaptureRequest_setEntry_float(request, ACAMERA_LENS_FOCUS_DISTANCE, 1, &focusDistance);
+        } else {
+            ACaptureRequest_setEntry_u8(request, ACAMERA_CONTROL_AF_MODE, 1, &afMode);
+        }
+    }
+
+    // Recrea la sesión de captura reflejando el conjunto actual de outputs
+    // (siempre JPEG; preview también si hay un previewWindow activo).
+    void rebuildSession() {
+        if (session != nullptr) {
+            ACameraCaptureSession_stopRepeating(session);
+            ACameraCaptureSession_close(session);
+            session = nullptr;
+        }
+        if (outputs != nullptr) {
+            ACaptureSessionOutputContainer_free(outputs);
+            outputs = nullptr;
+        }
+        if (previewTarget != nullptr) {
+            ACameraOutputTarget_free(previewTarget);
+            previewTarget = nullptr;
+        }
+        if (previewRequest != nullptr) {
+            ACaptureRequest_free(previewRequest);
+            previewRequest = nullptr;
+        }
+
+        checkCamera(ACaptureSessionOutputContainer_create(&outputs), "failed to create output container");
+        checkCamera(ACaptureSessionOutputContainer_add(outputs, jpegOutput), "failed to add jpeg output");
+        if (previewOutput != nullptr) {
+            checkCamera(ACaptureSessionOutputContainer_add(outputs, previewOutput), "failed to add preview output");
+        }
+
+        ACameraCaptureSession_stateCallbacks sessionCallbacks{};
+        sessionCallbacks.context = nullptr;
+        sessionCallbacks.onClosed = onSessionClosed;
+        sessionCallbacks.onReady = onSessionReady;
+        sessionCallbacks.onActive = onSessionActive;
+
+        checkCamera(
+            ACameraDevice_createCaptureSession(device, outputs, &sessionCallbacks, &session),
+            "failed to create capture session");
+
+        if (previewWindow != nullptr) {
+            checkCamera(
+                ACameraDevice_createCaptureRequest(device, TEMPLATE_PREVIEW, &previewRequest),
+                "failed to create preview request");
+            checkCamera(
+                ACameraOutputTarget_create(previewWindow, &previewTarget),
+                "failed to create preview target");
+            checkCamera(ACaptureRequest_addTarget(previewRequest, previewTarget), "failed to add preview target");
+            applyControls(previewRequest);
+
+            ACameraCaptureSession_captureCallbacks previewCallbacks{};
+            previewCallbacks.context = nullptr;
+            previewCallbacks.onCaptureFailed = onPreviewCaptureFailed;
+            previewCallbacks.onCaptureSequenceAborted = onPreviewSequenceAborted;
+
+            ACaptureRequest* requests[] = {previewRequest};
+            checkCamera(
+                ACameraCaptureSession_setRepeatingRequest(session, &previewCallbacks, 1, requests, nullptr),
+                "failed to start preview");
+        }
+    }
 };
 
 CameraSession::CameraSession(std::string lens) : impl_(std::make_unique<Impl>(std::move(lens))) {}
@@ -225,14 +361,69 @@ void CameraSession::open() {
             &callbacks,
             &impl_->device),
         "failed to open camera");
+
+    const auto jpegSize = chooseStreamSize(
+        impl_->manager, impl_->cameraId, AIMAGE_FORMAT_JPEG,
+        std::numeric_limits<int>::max(), std::numeric_limits<int>::max());
+    checkMedia(
+        AImageReader_new(jpegSize.width, jpegSize.height, AIMAGE_FORMAT_JPEG, 1, &impl_->jpegReader),
+        "failed to create image reader");
+
+    AImageReader_ImageListener imageListener{};
+    imageListener.context = &impl_->captureContext;
+    imageListener.onImageAvailable = onImageAvailable;
+    checkMedia(
+        AImageReader_setImageListener(impl_->jpegReader, &imageListener),
+        "failed to set image listener");
+    checkMedia(
+        AImageReader_getWindow(impl_->jpegReader, &impl_->jpegWindow),
+        "failed to get image reader window");
+    checkCamera(
+        ACaptureSessionOutput_create(impl_->jpegWindow, &impl_->jpegOutput),
+        "failed to create jpeg output");
+
+    impl_->rebuildSession();
 }
 
 void CameraSession::close() {
+    if (impl_->session != nullptr) {
+        ACameraCaptureSession_stopRepeating(impl_->session);
+        ACameraCaptureSession_close(impl_->session);
+        impl_->session = nullptr;
+    }
+    if (impl_->previewTarget != nullptr) {
+        ACameraOutputTarget_free(impl_->previewTarget);
+        impl_->previewTarget = nullptr;
+    }
+    if (impl_->previewRequest != nullptr) {
+        ACaptureRequest_free(impl_->previewRequest);
+        impl_->previewRequest = nullptr;
+    }
+    if (impl_->previewOutput != nullptr) {
+        ACaptureSessionOutput_free(impl_->previewOutput);
+        impl_->previewOutput = nullptr;
+    }
+    if (impl_->previewWindow != nullptr) {
+        ANativeWindow_release(impl_->previewWindow);
+        impl_->previewWindow = nullptr;
+    }
+    if (impl_->outputs != nullptr) {
+        ACaptureSessionOutputContainer_free(impl_->outputs);
+        impl_->outputs = nullptr;
+    }
+    if (impl_->jpegOutput != nullptr) {
+        ACaptureSessionOutput_free(impl_->jpegOutput);
+        impl_->jpegOutput = nullptr;
+    }
+    if (impl_->jpegReader != nullptr) {
+        AImageReader_delete(impl_->jpegReader);
+        impl_->jpegReader = nullptr;
+        impl_->jpegWindow = nullptr;
+    }
     if (impl_->device != nullptr) {
         ACameraDevice_close(impl_->device);
         impl_->device = nullptr;
     }
-
     if (impl_->manager != nullptr) {
         ACameraManager_delete(impl_->manager);
         impl_->manager = nullptr;
@@ -255,110 +446,117 @@ void CameraSession::setAutoFocus() {
     impl_->focusDistance = -1;
 }
 
-CaptureResult CameraSession::captureJpeg(const std::string& outputPath) {
+void CameraSession::setPreviewSurface(ANativeWindow* window) {
     if (impl_->device == nullptr) {
         open();
     }
 
-    const auto size = chooseJpegSize(impl_->manager, impl_->cameraId);
-    ImageCaptureContext context;
-    AImageReader* reader = nullptr;
-    ANativeWindow* window = nullptr;
-    ACaptureSessionOutputContainer* outputs = nullptr;
-    ACaptureSessionOutput* output = nullptr;
-    ACameraCaptureSession* session = nullptr;
+    // Reemplaza cualquier preview previo antes de instalar el nuevo.
+    if (impl_->previewWindow != nullptr) {
+        ANativeWindow_release(impl_->previewWindow);
+        impl_->previewWindow = nullptr;
+    }
+    if (impl_->previewOutput != nullptr) {
+        ACaptureSessionOutput_free(impl_->previewOutput);
+        impl_->previewOutput = nullptr;
+    }
+
+    const auto previewSize = chooseStreamSize(
+        impl_->manager, impl_->cameraId, AIMAGE_FORMAT_PRIVATE, MaxPreviewWidth, MaxPreviewHeight);
+    __android_log_print(
+        ANDROID_LOG_DEBUG,
+        LogTag,
+        "setPreviewSurface: chosen size=%dx%d (default %dx%d means no matching stream config was found)",
+        previewSize.width,
+        previewSize.height,
+        Size{}.width,
+        Size{}.height);
+    const auto geometryResult =
+        ANativeWindow_setBuffersGeometry(window, previewSize.width, previewSize.height, 0);
+    if (geometryResult != 0) {
+        __android_log_print(
+            ANDROID_LOG_ERROR, LogTag, "ANativeWindow_setBuffersGeometry failed: %d", geometryResult);
+    }
+
+    impl_->previewWindow = window;
+    checkCamera(
+        ACaptureSessionOutput_create(impl_->previewWindow, &impl_->previewOutput),
+        "failed to create preview output");
+
+    impl_->rebuildSession();
+}
+
+void CameraSession::clearPreviewSurface() {
+    if (impl_->previewWindow == nullptr) {
+        return;
+    }
+
+    if (impl_->previewOutput != nullptr) {
+        ACaptureSessionOutput_free(impl_->previewOutput);
+        impl_->previewOutput = nullptr;
+    }
+    ANativeWindow_release(impl_->previewWindow);
+    impl_->previewWindow = nullptr;
+
+    impl_->rebuildSession();
+}
+
+CaptureResult CameraSession::captureJpeg(const std::string& outputPath) {
+    if (impl_->device == nullptr) {
+        open();
+    }
+    if (impl_->session == nullptr) {
+        impl_->rebuildSession();
+    }
+
+    {
+        std::lock_guard<std::mutex> lock(impl_->captureContext.mutex);
+        impl_->captureContext.completed = false;
+        impl_->captureContext.failed = false;
+        impl_->captureContext.jpeg.clear();
+    }
+
     ACaptureRequest* request = nullptr;
     ACameraOutputTarget* target = nullptr;
 
-    checkMedia(
-        AImageReader_new(size.width, size.height, AIMAGE_FORMAT_JPEG, 1, &reader),
-        "failed to create image reader");
-
-    AImageReader_ImageListener imageListener{};
-    imageListener.context = &context;
-    imageListener.onImageAvailable = onImageAvailable;
-    checkMedia(AImageReader_setImageListener(reader, &imageListener), "failed to set image listener");
-    checkMedia(AImageReader_getWindow(reader, &window), "failed to get image reader window");
-
-    checkCamera(ACaptureSessionOutputContainer_create(&outputs), "failed to create output container");
-    checkCamera(ACaptureSessionOutput_create(window, &output), "failed to create capture output");
-    checkCamera(ACaptureSessionOutputContainer_add(outputs, output), "failed to add capture output");
-
-    ACameraCaptureSession_stateCallbacks sessionCallbacks{};
-    sessionCallbacks.context = nullptr;
-    sessionCallbacks.onClosed = onSessionClosed;
-    sessionCallbacks.onReady = onSessionReady;
-    sessionCallbacks.onActive = onSessionActive;
-
-    checkCamera(
-        ACameraDevice_createCaptureSession(impl_->device, outputs, &sessionCallbacks, &session),
-        "failed to create capture session");
     checkCamera(
         ACameraDevice_createCaptureRequest(impl_->device, TEMPLATE_STILL_CAPTURE, &request),
         "failed to create capture request");
-    checkCamera(ACameraOutputTarget_create(window, &target), "failed to create output target");
+    checkCamera(ACameraOutputTarget_create(impl_->jpegWindow, &target), "failed to create output target");
     checkCamera(ACaptureRequest_addTarget(request, target), "failed to add target");
-
-    uint8_t aeMode = ACAMERA_CONTROL_AE_MODE_ON;
-    if (impl_->iso > 0 || impl_->exposureMs > 0) {
-        aeMode = ACAMERA_CONTROL_AE_MODE_OFF;
-        ACaptureRequest_setEntry_u8(request, ACAMERA_CONTROL_AE_MODE, 1, &aeMode);
-
-        if (impl_->iso > 0) {
-            const int32_t iso = impl_->iso;
-            ACaptureRequest_setEntry_i32(request, ACAMERA_SENSOR_SENSITIVITY, 1, &iso);
-        }
-
-        if (impl_->exposureMs > 0) {
-            const int64_t exposureNs = static_cast<int64_t>(impl_->exposureMs * 1000000.0);
-            ACaptureRequest_setEntry_i64(request, ACAMERA_SENSOR_EXPOSURE_TIME, 1, &exposureNs);
-        }
-    } else {
-        ACaptureRequest_setEntry_u8(request, ACAMERA_CONTROL_AE_MODE, 1, &aeMode);
-    }
-
-    uint8_t afMode = ACAMERA_CONTROL_AF_MODE_CONTINUOUS_PICTURE;
-    if (impl_->focusDistance >= 0) {
-        afMode = ACAMERA_CONTROL_AF_MODE_OFF;
-        ACaptureRequest_setEntry_u8(request, ACAMERA_CONTROL_AF_MODE, 1, &afMode);
-        ACaptureRequest_setEntry_float(request, ACAMERA_LENS_FOCUS_DISTANCE, 1, &impl_->focusDistance);
-    } else {
-        ACaptureRequest_setEntry_u8(request, ACAMERA_CONTROL_AF_MODE, 1, &afMode);
-    }
+    impl_->applyControls(request);
 
     ACaptureRequest* requests[] = {request};
     int sequenceId = 0;
     checkCamera(
-        ACameraCaptureSession_capture(session, nullptr, 1, requests, &sequenceId),
+        ACameraCaptureSession_capture(impl_->session, nullptr, 1, requests, &sequenceId),
         "failed to capture JPEG");
 
     {
-        std::unique_lock<std::mutex> lock(context.mutex);
-        const bool completed = context.cv.wait_for(
+        std::unique_lock<std::mutex> lock(impl_->captureContext.mutex);
+        const bool completed = impl_->captureContext.cv.wait_for(
             lock,
             std::chrono::seconds(CaptureTimeoutSeconds),
-            [&context] { return context.completed; });
+            [this] { return impl_->captureContext.completed; });
 
-        if (!completed || context.failed || context.jpeg.empty()) {
+        if (!completed || impl_->captureContext.failed || impl_->captureContext.jpeg.empty()) {
+            ACaptureRequest_removeTarget(request, target);
+            ACameraOutputTarget_free(target);
+            ACaptureRequest_free(request);
             throw std::runtime_error("camera capture timed out or failed");
         }
     }
 
-    writeJpegFile(outputPath, context.jpeg);
+    writeJpegFile(outputPath, impl_->captureContext.jpeg);
 
     ACaptureRequest_removeTarget(request, target);
     ACameraOutputTarget_free(target);
     ACaptureRequest_free(request);
-    ACameraCaptureSession_close(session);
-    ACaptureSessionOutputContainer_remove(outputs, output);
-    ACaptureSessionOutput_free(output);
-    ACaptureSessionOutputContainer_free(outputs);
-    AImageReader_delete(reader);
 
     CaptureResult result;
     result.filePath = outputPath;
-    result.width = context.width;
-    result.height = context.height;
+    result.width = impl_->captureContext.width;
+    result.height = impl_->captureContext.height;
     return result;
 }
 

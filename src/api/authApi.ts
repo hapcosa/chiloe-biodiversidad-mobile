@@ -38,5 +38,9 @@ export class AuthApi {
     const response = await this.client.get<WhoAmIResponse>('/api/v1/auth/whoami');
     return response.user;
   }
+
+  updateProfile(changes: {name?: string; avatar?: string}): Promise<UserPublic> {
+    return this.client.put<UserPublic>('/api/v1/auth/me', changes);
+  }
 }
 

@@ -24,7 +24,7 @@ interface LocalAvistamientoRow {
   reino: LocalAvistamiento['reino'];
   nombre_sugerido: string | null;
   descripcion: string | null;
-  foto_key: string;
+  foto_key: string | null;
   local_photo_path: string | null;
   geo_lat: number;
   geo_lng: number;
@@ -101,7 +101,7 @@ export const enqueueAvistamiento = async (
       localAvistamiento.reino,
       localAvistamiento.nombre_sugerido ?? null,
       localAvistamiento.descripcion ?? null,
-      localAvistamiento.foto_key,
+      localAvistamiento.foto_key ?? null,
       localAvistamiento.local_photo_path ?? null,
       localAvistamiento.geo_lat,
       localAvistamiento.geo_lng,
