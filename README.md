@@ -44,10 +44,10 @@ App Android (React Native bare CLI + módulo nativo C++ con NDK Camera2) para la
    adb reverse tcp:9000 tcp:9000
    ```
 
-   `appConfig.apiBaseUrl` ya apunta a `http://localhost:8080`, así que este comando
-   basta tanto para emulador como para dispositivo físico — no hace falta editar
-   el código para cada entorno. Configura además `googleWebClientId` con el OAuth
-   Web Client ID usado también por `auth-service`.
+   En builds de debug `appConfig.apiBaseUrl` apunta a `http://localhost:8080`, así
+   que este comando basta tanto para emulador como para dispositivo físico — no
+   hace falta editar el código para cada entorno. Configura además
+   `googleWebClientId` con el OAuth Web Client ID usado también por `auth-service`.
 
    El segundo reverse (puerto 9000) es necesario porque la subida de fotos
    (avistamientos, avatar) va **directo a MinIO** con la URL presignada, sin pasar
@@ -68,6 +68,29 @@ App Android (React Native bare CLI + módulo nativo C++ con NDK Camera2) para la
 
    Si falla por ausencia de `android/gradlew`, genera el wrapper con Gradle local
    (`gradle wrapper` dentro de `android/`) y commitea el resultado.
+
+## Build de producción
+
+`appConfig.apiBaseUrl` cambia según el tipo de build: debug usa
+`http://localhost:8080` (con los `adb reverse` de arriba) y release usa
+`https://api.budaicapital.com`. No hay que editar código para cambiar de entorno.
+
+```bash
+cd android && JAVA_HOME=/usr/lib/jvm/java-17-openjdk ./gradlew assembleRelease
+adb install -r app/build/outputs/apk/release/app-release.apk
+```
+
+El APK resultante embebe el bundle JS, así que no depende de Metro y funciona en
+cualquier red con internet. Las fotos no necesitan configuración: el cliente sube
+a la URL presignada que devuelve la API, y es el backend quien decide el host del
+object storage.
+
+Dos límites a tener presentes:
+
+- Gradle 8.14 no soporta Java 26; de ahí el `JAVA_HOME` explícito.
+- `release` se firma con el **debug keystore** (plantilla por defecto de RN).
+  Sirve para sideload, **no** para publicar en Play Store. Antes de distribuir hay
+  que generar un keystore propio y sacarlo del repo.
 
 ## Scripts
 
