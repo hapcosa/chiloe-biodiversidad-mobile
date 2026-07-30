@@ -203,6 +203,28 @@ export const markMutationFailed = async (
   );
 };
 
+// Para errores que reintentar no va a arreglar (el servidor rechazó el
+// contenido). Queda fuera de listPendingMutations, así que el worker no vuelve
+// a tocarlo; el registro se conserva para poder mostrárselo al usuario.
+export const markMutationRejected = async (
+  id: string,
+  errorMessage: string,
+): Promise<void> => {
+  const now = new Date().toISOString();
+  await executeSql(
+    `UPDATE mutation_queue
+     SET status = 'rejected', attempts = attempts + 1, last_error = ?, updated_at = ?
+     WHERE id = ?`,
+    [errorMessage, now, id],
+  );
+  await executeSql(
+    `UPDATE local_avistamientos
+     SET sync_status = 'rejected', updated_at = ?
+     WHERE local_id = ?`,
+    [now, id],
+  );
+};
+
 export const listLocalAvistamientos = async (): Promise<LocalAvistamiento[]> => {
   await initializeDatabase();
   const rows = await querySql<LocalAvistamientoRow>(

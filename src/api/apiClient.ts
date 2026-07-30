@@ -6,6 +6,10 @@ interface ApiClientOptions {
   baseUrl: string;
   timeoutMs: number;
   getAccessToken?: TokenProvider;
+  // Se invoca cuando el servidor rechaza un token que sí mandamos. No aplica a
+  // login/refresh, que van sin Authorization: ahí un 401 es "credenciales
+  // malas", no "sesión caducada".
+  onUnauthorized?: () => void;
 }
 
 interface RequestOptions {
@@ -45,11 +49,17 @@ export class ApiClient {
   private readonly baseUrl: string;
   private readonly timeoutMs: number;
   private readonly getAccessToken?: TokenProvider;
+  private onUnauthorized?: () => void;
 
   constructor(options: ApiClientOptions) {
     this.baseUrl = normalizeBaseUrl(options.baseUrl);
     this.timeoutMs = options.timeoutMs;
     this.getAccessToken = options.getAccessToken;
+    this.onUnauthorized = options.onUnauthorized;
+  }
+
+  setUnauthorizedHandler(handler: (() => void) | undefined): void {
+    this.onUnauthorized = handler;
   }
 
   async request<T>(path: string, options: RequestOptions = {}): Promise<T> {
@@ -66,10 +76,12 @@ export class ApiClient {
       body = JSON.stringify(options.body);
     }
 
+    let sentToken = false;
     if (options.authenticated !== false && this.getAccessToken) {
       const token = await this.getAccessToken();
       if (token) {
         headers.Authorization = `Bearer ${token}`;
+        sentToken = true;
       }
     }
 
@@ -83,6 +95,10 @@ export class ApiClient {
       const payload = await parseResponseBody<T>(response);
 
       if (!response.ok) {
+        if (response.status === 401 && sentToken) {
+          this.onUnauthorized?.();
+        }
+
         const message =
           typeof payload === 'object' && payload !== null && 'message' in payload
             ? String((payload as {message?: unknown}).message)

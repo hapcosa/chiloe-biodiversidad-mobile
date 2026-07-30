@@ -1,7 +1,14 @@
 import type {Reino} from './domain';
 
 export type AvistamientoEstado = 'pendiente' | 'aprobado' | 'rechazado';
-export type MutationStatus = 'pending' | 'syncing' | 'failed' | 'synced';
+// `failed` es un fallo transitorio (sin red, 5xx) y se reintenta; `rejected` es
+// definitivo (el servidor rechazó el contenido) y no se reintenta nunca más.
+export type MutationStatus =
+  | 'pending'
+  | 'syncing'
+  | 'failed'
+  | 'rejected'
+  | 'synced';
 export type MutationType = 'create_avistamiento';
 
 export interface AvistamientoDraft {
