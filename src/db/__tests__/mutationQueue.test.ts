@@ -3,6 +3,7 @@ import {
   enqueueAvistamiento,
   listPendingMutations,
   markMutationFailed,
+  markMutationRejected,
   markMutationSynced,
 } from '../mutationQueue';
 import {executeSql, initializeDatabase, querySql} from '../connection';
@@ -102,5 +103,21 @@ describe('transiciones de estado', () => {
     expect(calls[0]?.[0]).toContain('attempts = attempts + 1');
     expect(calls[0]?.[1]?.[0]).toBe('timeout');
     expect(calls[1]?.[0]).toContain("sync_status = 'failed'");
+  });
+
+  it('markMutationRejected deja la mutación en un estado terminal', async () => {
+    await markMutationRejected('local-1', 'HTTP 422');
+
+    const calls = mockExecuteSql.mock.calls;
+    expect(calls[0]?.[0]).toContain("status = 'rejected'");
+    expect(calls[0]?.[1]?.[0]).toBe('HTTP 422');
+    expect(calls[1]?.[0]).toContain("sync_status = 'rejected'");
+  });
+
+  it('listPendingMutations no vuelve a tomar las mutaciones rechazadas', async () => {
+    await listPendingMutations();
+
+    const [sql] = mockQuerySql.mock.calls[0] ?? [];
+    expect(sql).not.toContain('rejected');
   });
 });

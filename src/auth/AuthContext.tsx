@@ -7,7 +7,8 @@ import React, {
   useState,
   type ReactNode,
 } from 'react';
-import {authApi, setApiAccessToken} from '../api';
+import {authApi, setApiAccessToken, setUnauthorizedHandler} from '../api';
+import {clearLocalUserData} from '../db/localUserData';
 import type {StoredSession, UserPublic} from '../types/domain';
 import {requestGoogleIdToken} from './googleSignIn';
 import {toStoredSession, tokenStore} from './tokenStore';
@@ -74,6 +75,21 @@ export const AuthProvider = ({children}: {children: ReactNode}): React.JSX.Eleme
     void restore();
   }, [restore]);
 
+  // Sin esto, un token que el backend ya no acepta (caducado, cuenta
+  // deshabilitada, o emitido por otro despliegue con distinta clave de firma)
+  // deja la app mostrando el perfil cacheado para siempre, porque nada vuelve a
+  // preguntar quién es el usuario.
+  useEffect(() => {
+    setUnauthorizedHandler(() => {
+      void (async () => {
+        await clearLocalUserData();
+        await applySession(null);
+      })();
+    });
+
+    return () => setUnauthorizedHandler(undefined);
+  }, [applySession]);
+
   const loginWithPassword = useCallback(
     async (email: string, password: string) => {
       const response = await authApi.login(email, password);
@@ -89,6 +105,7 @@ export const AuthProvider = ({children}: {children: ReactNode}): React.JSX.Eleme
   }, [applySession]);
 
   const logout = useCallback(async () => {
+    await clearLocalUserData();
     await applySession(null);
   }, [applySession]);
 

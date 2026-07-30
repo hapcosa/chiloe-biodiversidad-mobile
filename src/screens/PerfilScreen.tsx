@@ -33,7 +33,8 @@ const syncStatusLabel: Record<LocalAvistamiento['sync_status'], string> = {
   pending: 'Pendiente de sincronizar',
   syncing: 'Sincronizando...',
   synced: 'Sincronizado',
-  failed: 'Falló la sincronización',
+  failed: 'Falló la sincronización, se reintentará',
+  rejected: 'El servidor lo rechazó',
 };
 
 export const PerfilScreen = ({onOpenCamera}: PerfilScreenProps): React.JSX.Element => {
