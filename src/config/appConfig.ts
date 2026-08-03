@@ -10,8 +10,15 @@ const apiBaseUrl = __DEV__
   ? 'http://localhost:8080'
   : 'https://api.budaicapital.com';
 
+// El ID de cliente *Web*, no el de Android: es la audiencia que Google pone en
+// el `idToken` y la que el auth-service valida. El cliente Android existe solo
+// para que Play Services acepte la firma del APK y no se referencia desde aquí.
+// No es un secreto: viaja dentro del APK y es público por diseño.
+const googleWebClientId =
+  '649341813849-fqtljjtvb4ncfbii7pdt3vbkjd40nsif.apps.googleusercontent.com';
+
 export const appConfig = {
   apiBaseUrl,
-  googleWebClientId: '',
+  googleWebClientId,
   requestTimeoutMs: 15000,
 };
