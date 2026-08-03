@@ -172,6 +172,31 @@ std::string selectCameraId(ACameraManager* manager, const std::string& lens) {
     return fallback;
 }
 
+void readSensorCharacteristics(
+    ACameraManager* manager,
+    const std::string& cameraId,
+    int& orientationDegrees,
+    bool& frontFacing) {
+    ACameraMetadata* metadata = nullptr;
+    if (ACameraManager_getCameraCharacteristics(manager, cameraId.c_str(), &metadata) != ACAMERA_OK) {
+        return;
+    }
+
+    ACameraMetadata_const_entry orientationEntry{};
+    if (ACameraMetadata_getConstEntry(metadata, ACAMERA_SENSOR_ORIENTATION, &orientationEntry) == ACAMERA_OK &&
+        orientationEntry.count > 0) {
+        orientationDegrees = orientationEntry.data.i32[0];
+    }
+
+    ACameraMetadata_const_entry facingEntry{};
+    if (ACameraMetadata_getConstEntry(metadata, ACAMERA_LENS_FACING, &facingEntry) == ACAMERA_OK &&
+        facingEntry.count > 0) {
+        frontFacing = facingEntry.data.u8[0] == ACAMERA_LENS_FACING_FRONT;
+    }
+
+    ACameraMetadata_free(metadata);
+}
+
 // Elige el stream más grande disponible para `format` que no exceda
 // maxWidth/maxHeight (usar límites de int para "sin tope", como en JPEG).
 Size chooseStreamSize(
@@ -226,6 +251,20 @@ struct CameraSession::Impl {
     int iso = 0;
     double exposureMs = 0;
     float focusDistance = -1;
+
+    int sensorOrientationDegrees = 90;
+    bool frontFacing = false;
+    int deviceOrientationDegrees = 0;
+    Size previewSize;
+
+    // Fórmula de la documentación de CaptureRequest#JPEG_ORIENTATION: la
+    // rotación del dispositivo se invierte en cámaras frontales porque su
+    // imagen ya viene espejada.
+    int jpegOrientation() const {
+        const int deviceOrientation =
+            frontFacing ? -deviceOrientationDegrees : deviceOrientationDegrees;
+        return ((sensorOrientationDegrees + deviceOrientation) % 360 + 360) % 360;
+    }
 
     AImageReader* jpegReader = nullptr;
     ANativeWindow* jpegWindow = nullptr;
@@ -348,6 +387,11 @@ void CameraSession::open() {
     }
 
     impl_->cameraId = selectCameraId(impl_->manager, impl_->lens);
+    readSensorCharacteristics(
+        impl_->manager,
+        impl_->cameraId,
+        impl_->sensorOrientationDegrees,
+        impl_->frontFacing);
 
     ACameraDevice_StateCallbacks callbacks{};
     callbacks.context = nullptr;
@@ -463,6 +507,10 @@ void CameraSession::setPreviewSurface(ANativeWindow* window) {
 
     const auto previewSize = chooseStreamSize(
         impl_->manager, impl_->cameraId, AIMAGE_FORMAT_PRIVATE, MaxPreviewWidth, MaxPreviewHeight);
+    // Lo consulta la vista de preview para calcular su matriz de transformación:
+    // el buffer llega en orientación de sensor (apaisado) y hay que rotarlo y
+    // escalarlo para que llene una vista vertical sin deformarse.
+    impl_->previewSize = previewSize;
     __android_log_print(
         ANDROID_LOG_DEBUG,
         LogTag,
@@ -501,6 +549,22 @@ void CameraSession::clearPreviewSurface() {
     impl_->rebuildSession();
 }
 
+void CameraSession::setDeviceOrientation(int degrees) {
+    // Se redondea al múltiplo de 90 más cercano: OrientationEventListener
+    // entrega grados continuos y JPEG_ORIENTATION solo admite cuartos de vuelta.
+    const int normalized = ((degrees % 360) + 360) % 360;
+    impl_->deviceOrientationDegrees = ((normalized + 45) / 90 * 90) % 360;
+}
+
+SensorGeometry CameraSession::sensorGeometry() const {
+    SensorGeometry geometry;
+    geometry.orientationDegrees = impl_->sensorOrientationDegrees;
+    geometry.frontFacing = impl_->frontFacing;
+    geometry.previewWidth = impl_->previewSize.width;
+    geometry.previewHeight = impl_->previewSize.height;
+    return geometry;
+}
+
 CaptureResult CameraSession::captureJpeg(const std::string& outputPath) {
     if (impl_->device == nullptr) {
         open();
@@ -525,6 +589,9 @@ CaptureResult CameraSession::captureJpeg(const std::string& outputPath) {
     checkCamera(ACameraOutputTarget_create(impl_->jpegWindow, &target), "failed to create output target");
     checkCamera(ACaptureRequest_addTarget(request, target), "failed to add target");
     impl_->applyControls(request);
+
+    const int32_t jpegOrientation = impl_->jpegOrientation();
+    ACaptureRequest_setEntry_i32(request, ACAMERA_JPEG_ORIENTATION, 1, &jpegOrientation);
 
     ACaptureRequest* requests[] = {request};
     int sequenceId = 0;
