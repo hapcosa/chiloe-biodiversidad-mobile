@@ -117,12 +117,39 @@ Java_cl_chiloe_biodiversidad_camera_ChiloeCameraModule_nativeCaptureJpeg(
     JNIEnv* env,
     jobject,
     jint sessionId,
-    jstring outputPath) {
+    jstring outputPath,
+    jint deviceOrientation) {
     try {
-        const auto result = getSession(sessionId).captureJpeg(toString(env, outputPath));
+        auto& session = getSession(sessionId);
+        session.setDeviceOrientation(deviceOrientation);
+        const auto result = session.captureJpeg(toString(env, outputPath));
         jint values[] = {result.width, result.height};
         jintArray array = env->NewIntArray(2);
         env->SetIntArrayRegion(array, 0, 2, values);
+        return array;
+    } catch (const std::exception& error) {
+        throwJava(env, error);
+        return nullptr;
+    }
+}
+
+// Devuelve {orientación del sensor, 1 si es frontal, ancho y alto del preview}
+// para que la vista de preview calcule su transformación.
+extern "C" JNIEXPORT jintArray JNICALL
+Java_cl_chiloe_biodiversidad_camera_ChiloeCameraModule_nativeGetSensorGeometry(
+    JNIEnv* env,
+    jobject,
+    jint sessionId) {
+    try {
+        const auto geometry = getSession(sessionId).sensorGeometry();
+        jint values[] = {
+            geometry.orientationDegrees,
+            geometry.frontFacing ? 1 : 0,
+            geometry.previewWidth,
+            geometry.previewHeight,
+        };
+        jintArray array = env->NewIntArray(4);
+        env->SetIntArrayRegion(array, 0, 4, values);
         return array;
     } catch (const std::exception& error) {
         throwJava(env, error);

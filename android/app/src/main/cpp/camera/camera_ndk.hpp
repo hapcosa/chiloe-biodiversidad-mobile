@@ -13,6 +13,15 @@ struct CaptureResult {
     int height = 0;
 };
 
+struct SensorGeometry {
+    // Grados en sentido horario que hay que rotar la salida del sensor para
+    // que quede derecha con el dispositivo en su orientación natural.
+    int orientationDegrees = 90;
+    bool frontFacing = false;
+    int previewWidth = 0;
+    int previewHeight = 0;
+};
+
 class CameraSession {
 public:
     explicit CameraSession(std::string lens);
@@ -28,6 +37,13 @@ public:
     void setFocusDistance(float distance);
     void setAutoFocus();
     CaptureResult captureJpeg(const std::string& outputPath);
+
+    // Grados que el dispositivo está rotado respecto de su orientación natural,
+    // en sentido horario (lo que reporta OrientationEventListener). Necesario
+    // para que el JPEG salga derecho: sin esto se graba tal cual lo entrega el
+    // sensor, que en casi todos los teléfonos está montado apaisado.
+    void setDeviceOrientation(int degrees);
+    SensorGeometry sensorGeometry() const;
 
     // window es un ANativeWindow ya adquirido (ANativeWindow_fromSurface) que
     // el caller sigue siendo dueño de liberar tras clearPreviewSurface().
