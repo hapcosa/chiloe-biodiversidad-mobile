@@ -1,5 +1,11 @@
-import React, {useEffect, useState} from 'react';
-import {ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View} from 'react-native';
+import React, {useCallback, useEffect, useRef, useState} from 'react';
+import {
+  ActivityIndicator,
+  Pressable,
+  StyleSheet,
+  Text,
+  View,
+} from 'react-native';
 import {CameraPreview} from '../native/CameraPreview';
 import {
   openCamera,
@@ -15,8 +21,45 @@ interface CameraScreenProps {
 export const CameraScreen = ({onBack}: CameraScreenProps): React.JSX.Element => {
   const [session, setSession] = useState<CameraSession | null>(null);
   const [capture, setCapture] = useState<CameraCapture | null>(null);
-  const [status, setStatus] = useState('Cámara cerrada');
-  const [isBusy, setIsBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [isCapturing, setIsCapturing] = useState(false);
+  // Evita abrir dos sesiones si el efecto se remonta antes de resolverse.
+  const isOpening = useRef(false);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const open = async (): Promise<void> => {
+      if (isOpening.current) {
+        return;
+      }
+      isOpening.current = true;
+      try {
+        const nextSession = await openCamera({lens: 'back'});
+        if (cancelled) {
+          void nextSession.close();
+          return;
+        }
+        setSession(nextSession);
+      } catch (openError) {
+        if (!cancelled) {
+          setError(
+            openError instanceof Error
+              ? openError.message
+              : 'No se pudo abrir la cámara',
+          );
+        }
+      } finally {
+        isOpening.current = false;
+      }
+    };
+
+    void open();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   useEffect(
     () => () => {
@@ -27,218 +70,161 @@ export const CameraScreen = ({onBack}: CameraScreenProps): React.JSX.Element => 
     [session],
   );
 
-  const run = async (action: () => Promise<void>): Promise<void> => {
-    setIsBusy(true);
-    try {
-      await action();
-    } catch (error) {
-      setStatus(error instanceof Error ? error.message : 'Error de cámara');
-    } finally {
-      setIsBusy(false);
+  const takePhoto = useCallback(async (): Promise<void> => {
+    if (!session || isCapturing) {
+      return;
     }
-  };
 
-  const openBackCamera = (): Promise<void> =>
-    run(async () => {
-      const nextSession = await openCamera({lens: 'back'});
-      setSession(nextSession);
-      setStatus(`Sesión abierta: ${nextSession.sessionId}`);
-    });
-
-  const captureJpeg = (): Promise<void> =>
-    run(async () => {
-      if (!session) {
-        throw new Error('Abre una sesión de cámara primero');
-      }
-      const result = await session.capture();
-      setCapture(result);
-      setStatus('JPEG capturado');
-    });
-
-  const closeCamera = (): Promise<void> =>
-    run(async () => {
-      await session?.close();
-      setSession(null);
-      setStatus('Cámara cerrada');
-    });
-
-  const applyManualControls = (): Promise<void> =>
-    run(async () => {
-      if (!session) {
-        throw new Error('Abre una sesión de cámara primero');
-      }
-      await session.setIso(200);
-      await session.setExposure(12);
-      await session.setFocus('auto');
-      setStatus('Controles aplicados: ISO 200, 12 ms, foco auto');
-    });
+    setIsCapturing(true);
+    setError(null);
+    try {
+      setCapture(await session.capture());
+    } catch (captureError) {
+      setError(
+        captureError instanceof Error
+          ? captureError.message
+          : 'No se pudo tomar la foto',
+      );
+    } finally {
+      setIsCapturing(false);
+    }
+  }, [isCapturing, session]);
 
   return (
-    <ScrollView
-      style={styles.container}
-      contentContainerStyle={styles.contentContainer}>
-      <Pressable accessibilityRole="button" onPress={onBack} style={styles.backButton}>
-        <Text style={styles.backButtonText}>← Volver</Text>
-      </Pressable>
+    <View style={styles.container}>
+      <View style={styles.viewfinder}>
+        {session ? (
+          <CameraPreview sessionId={session.sessionId} style={styles.preview} />
+        ) : (
+          <View style={styles.placeholder}>
+            <ActivityIndicator color={colors.surface} />
+            <Text style={styles.placeholderText}>Abriendo la cámara…</Text>
+          </View>
+        )}
 
-      <View style={styles.card}>
-        <Text style={styles.title}>Cámara NDK</Text>
-        <Text style={styles.subtitle}>
-          Abre la cámara trasera, aplica controles manuales y captura JPEG con preview en vivo.
-        </Text>
-        <Text style={styles.status}>{status}</Text>
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="Volver"
+          onPress={onBack}
+          style={styles.backButton}>
+          <Text style={styles.backButtonText}>← Volver</Text>
+        </Pressable>
+
+        {error ? (
+          <View style={styles.errorBanner}>
+            <Text style={styles.errorText}>{error}</Text>
+          </View>
+        ) : null}
       </View>
 
-      {session ? (
-        <View style={styles.previewContainer}>
-          <CameraPreview sessionId={session.sessionId} style={styles.previewSurface} />
-        </View>
-      ) : null}
+      <View style={styles.controls}>
+        <Text style={styles.hint} numberOfLines={1}>
+          {capture ? 'Foto guardada' : 'Encuadra la especie y toma la foto'}
+        </Text>
 
-      <Pressable
-        accessibilityRole="button"
-        disabled={isBusy || session !== null}
-        onPress={openBackCamera}
-        style={[styles.primaryButton, (isBusy || session !== null) && styles.disabled]}>
-        <Text style={styles.primaryButtonText}>Abrir cámara trasera</Text>
-      </Pressable>
-
-      <Pressable
-        accessibilityRole="button"
-        disabled={isBusy || session === null}
-        onPress={applyManualControls}
-        style={[styles.secondaryButton, (isBusy || session === null) && styles.disabled]}>
-        <Text style={styles.secondaryButtonText}>Aplicar controles</Text>
-      </Pressable>
-
-      <Pressable
-        accessibilityRole="button"
-        disabled={isBusy || session === null}
-        onPress={captureJpeg}
-        style={[styles.primaryButton, (isBusy || session === null) && styles.disabled]}>
-        {isBusy ? (
-          <ActivityIndicator color={colors.surface} />
-        ) : (
-          <Text style={styles.primaryButtonText}>Capturar JPEG</Text>
-        )}
-      </Pressable>
-
-      <Pressable
-        accessibilityRole="button"
-        disabled={isBusy || session === null}
-        onPress={closeCamera}
-        style={[styles.secondaryButton, (isBusy || session === null) && styles.disabled]}>
-        <Text style={styles.secondaryButtonText}>Cerrar cámara</Text>
-      </Pressable>
-
-      {capture ? (
-        <View style={styles.resultCard}>
-          <Text style={styles.resultTitle}>Última captura</Text>
-          <Text style={styles.resultText}>Archivo: {capture.filePath}</Text>
-          <Text style={styles.resultText}>
-            Tamaño: {capture.width} × {capture.height}
-          </Text>
-        </View>
-      ) : null}
-    </ScrollView>
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="Tomar foto"
+          disabled={session === null || isCapturing}
+          onPress={() => {
+            void takePhoto();
+          }}
+          style={[
+            styles.shutter,
+            (session === null || isCapturing) && styles.shutterDisabled,
+          ]}>
+          {isCapturing ? (
+            <ActivityIndicator color={colors.primaryDark} />
+          ) : (
+            <View style={styles.shutterInner} />
+          )}
+        </Pressable>
+      </View>
+    </View>
   );
 };
 
 const styles = StyleSheet.create({
   container: {
-    backgroundColor: colors.background,
+    backgroundColor: '#000',
     flex: 1,
   },
-  contentContainer: {
-    padding: spacing.lg,
+  viewfinder: {
+    backgroundColor: '#000',
+    flex: 1,
+  },
+  preview: {
+    bottom: 0,
+    left: 0,
+    position: 'absolute',
+    right: 0,
+    top: 0,
+  },
+  placeholder: {
+    bottom: 0,
+    left: 0,
+    position: 'absolute',
+    right: 0,
+    top: 0,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  placeholderText: {
+    color: colors.surface,
+    marginTop: spacing.md,
   },
   backButton: {
-    marginBottom: spacing.lg,
+    left: spacing.lg,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    position: 'absolute',
+    top: spacing.lg,
   },
   backButtonText: {
-    color: colors.primary,
+    color: colors.surface,
     fontSize: 16,
     fontWeight: '700',
   },
-  card: {
-    backgroundColor: colors.surface,
-    borderColor: colors.border,
-    borderRadius: 18,
-    borderWidth: 1,
-    marginBottom: spacing.lg,
-    padding: spacing.lg,
-  },
-  title: {
-    color: colors.primaryDark,
-    fontSize: 28,
-    fontWeight: '800',
-  },
-  subtitle: {
-    color: colors.muted,
-    lineHeight: 21,
-    marginTop: spacing.sm,
-  },
-  status: {
-    color: colors.text,
-    fontWeight: '700',
-    marginTop: spacing.lg,
-  },
-  previewContainer: {
-    aspectRatio: 3 / 4,
-    backgroundColor: '#000',
-    borderRadius: 18,
-    marginBottom: spacing.lg,
-    overflow: 'hidden',
-    width: '100%',
-  },
-  previewSurface: {
-    flex: 1,
-  },
-  primaryButton: {
-    alignItems: 'center',
-    backgroundColor: colors.primary,
+  errorBanner: {
+    backgroundColor: 'rgba(0, 0, 0, 0.7)',
+    bottom: spacing.lg,
     borderRadius: 12,
-    minHeight: 48,
-    justifyContent: 'center',
-    marginBottom: spacing.md,
+    left: spacing.lg,
+    padding: spacing.md,
+    position: 'absolute',
+    right: spacing.lg,
   },
-  primaryButtonText: {
+  errorText: {
     color: colors.surface,
-    fontWeight: '800',
   },
-  secondaryButton: {
+  controls: {
     alignItems: 'center',
-    borderColor: colors.primary,
-    borderRadius: 12,
-    borderWidth: 1,
-    minHeight: 48,
-    justifyContent: 'center',
-    marginBottom: spacing.md,
+    backgroundColor: '#000',
+    paddingBottom: spacing.xl,
+    paddingTop: spacing.lg,
   },
-  secondaryButtonText: {
-    color: colors.primary,
-    fontWeight: '800',
+  hint: {
+    color: colors.surface,
+    marginBottom: spacing.lg,
+    opacity: 0.8,
   },
-  disabled: {
-    opacity: 0.5,
-  },
-  resultCard: {
+  shutter: {
+    alignItems: 'center',
     backgroundColor: colors.surface,
-    borderColor: colors.border,
-    borderRadius: 18,
-    borderWidth: 1,
-    marginTop: spacing.lg,
-    padding: spacing.lg,
+    borderColor: colors.surface,
+    borderRadius: 40,
+    borderWidth: 4,
+    height: 80,
+    justifyContent: 'center',
+    width: 80,
   },
-  resultTitle: {
-    color: colors.primaryDark,
-    fontSize: 18,
-    fontWeight: '800',
-    marginBottom: spacing.sm,
+  shutterDisabled: {
+    opacity: 0.4,
   },
-  resultText: {
-    color: colors.text,
-    lineHeight: 22,
+  shutterInner: {
+    backgroundColor: colors.primary,
+    borderRadius: 32,
+    height: 64,
+    width: 64,
   },
 });
-
