@@ -3,12 +3,14 @@ import type {
   LocalAvistamiento,
   MutationQueueItem,
   MutationStatus,
+  MutationType,
 } from '../types/avistamiento';
+import type {IdentificacionDraft} from '../types/identificacion';
 import {executeSql, initializeDatabase, querySql} from './connection';
 
 interface MutationQueueRow {
   id: string;
-  type: 'create_avistamiento';
+  type: MutationType;
   payload: string;
   status: MutationStatus;
   attempts: number;
@@ -16,6 +18,16 @@ interface MutationQueueRow {
   created_at: string;
   updated_at: string;
 }
+
+export type AvistamientoMutation = MutationQueueItem<
+  AvistamientoDraft & {local_id: string}
+> & {type: 'create_avistamiento'};
+
+export type IdentificacionMutation = MutationQueueItem<IdentificacionDraft> & {
+  type: 'create_identificacion';
+};
+
+export type PendingMutation = AvistamientoMutation | IdentificacionMutation;
 
 interface LocalAvistamientoRow {
   local_id: string;
@@ -52,7 +64,15 @@ const rowToMutation = <T>(row: MutationQueueRow): MutationQueueItem<T> => ({
   updated_at: row.updated_at,
 });
 
-const rowToLocalAvistamiento = (row: LocalAvistamientoRow): LocalAvistamiento => ({
+const rowToPendingMutation = (row: MutationQueueRow): PendingMutation =>
+  row.type === 'create_identificacion'
+    ? {...rowToMutation<IdentificacionDraft>(row), type: 'create_identificacion'}
+    : {
+        ...rowToMutation<AvistamientoDraft & {local_id: string}>(row),
+        type: 'create_avistamiento',
+      };
+
+const rowToLocalAvistamiento =(row: LocalAvistamientoRow): LocalAvistamiento => ({
   local_id: row.local_id,
   remote_id: row.remote_id,
   especie_id: row.especie_id,
@@ -133,9 +153,44 @@ export const enqueueAvistamiento = async (
   return localAvistamiento;
 };
 
+// La identificación no tiene tabla local propia: mientras espera red vive solo
+// en la cola, y la pantalla de detalle la lee de ahí para mostrarla junto a las
+// que ya viajaron (ver listPendingIdentificaciones).
+export const enqueueIdentificacion = async (
+  draft: IdentificacionDraft,
+): Promise<IdentificacionMutation> => {
+  await initializeDatabase();
+
+  const now = new Date().toISOString();
+  const id = makeLocalId();
+  const payload: IdentificacionDraft = {
+    avistamiento_id: draft.avistamiento_id,
+    especie_id: draft.especie_id,
+    comentario: draft.comentario ?? null,
+  };
+
+  await executeSql(
+    `INSERT INTO mutation_queue (
+      id, type, payload, status, attempts, last_error, created_at, updated_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+    [id, 'create_identificacion', JSON.stringify(payload), 'pending', 0, null, now, now],
+  );
+
+  return {
+    id,
+    type: 'create_identificacion',
+    payload,
+    status: 'pending',
+    attempts: 0,
+    last_error: null,
+    created_at: now,
+    updated_at: now,
+  };
+};
+
 export const listPendingMutations = async (
   limit = 20,
-): Promise<Array<MutationQueueItem<AvistamientoDraft & {local_id: string}>>> => {
+): Promise<PendingMutation[]> => {
   await initializeDatabase();
 
   const rows = await querySql<MutationQueueRow>(
@@ -146,7 +201,31 @@ export const listPendingMutations = async (
     [limit],
   );
 
-  return rows.map(row => rowToMutation<AvistamientoDraft & {local_id: string}>(row));
+  return rows.map(rowToPendingMutation);
+};
+
+// Incluye las 'rejected' a propósito: si el servidor rechazó la sugerencia, el
+// usuario tiene que enterarse en la misma pantalla donde la escribió.
+export const listPendingIdentificaciones = async (
+  avistamientoId: number,
+): Promise<IdentificacionMutation[]> => {
+  await initializeDatabase();
+
+  const rows = await querySql<MutationQueueRow>(
+    `SELECT * FROM mutation_queue
+     WHERE type = 'create_identificacion' AND status != 'synced'
+     ORDER BY created_at ASC`,
+  );
+
+  // El avistamiento va dentro del payload JSON, así que el filtro es en JS:
+  // un LIKE sobre el texto serializado confundiría 12 con 120.
+  return rows
+    .map(rowToPendingMutation)
+    .filter(
+      (mutation): mutation is IdentificacionMutation =>
+        mutation.type === 'create_identificacion' &&
+        mutation.payload.avistamiento_id === avistamientoId,
+    );
 };
 
 export const markMutationSyncing = async (id: string): Promise<void> => {
@@ -165,9 +244,11 @@ export const markMutationSyncing = async (id: string): Promise<void> => {
   );
 };
 
+// remoteId es null para las mutaciones que no crean un avistamiento local
+// (identificaciones): no hay fila que enlazar.
 export const markMutationSynced = async (
   id: string,
-  remoteId: number,
+  remoteId: number | null,
 ): Promise<void> => {
   const now = new Date().toISOString();
   await executeSql(
@@ -176,6 +257,11 @@ export const markMutationSynced = async (
      WHERE id = ?`,
     [now, id],
   );
+
+  if (remoteId === null) {
+    return;
+  }
+
   await executeSql(
     `UPDATE local_avistamientos
      SET remote_id = ?, sync_status = 'synced', updated_at = ?
@@ -184,6 +270,9 @@ export const markMutationSynced = async (
   );
 };
 
+// El UPDATE de local_avistamientos no afecta a ninguna fila cuando la mutación
+// es una identificación (no tiene avistamiento local); el estado que importa
+// queda en mutation_queue.
 export const markMutationFailed = async (
   id: string,
   errorMessage: string,

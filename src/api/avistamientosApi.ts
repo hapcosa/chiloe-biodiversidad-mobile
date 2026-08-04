@@ -1,6 +1,7 @@
 import type {
   AvistamientoDraft,
   CreateAvistamientoResponse,
+  RemoteAvistamiento,
 } from '../types/avistamiento';
 import type {ApiClient} from './apiClient';
 
@@ -19,6 +20,10 @@ export class AvistamientosApi {
       precision_metros: draft.precision_metros ?? null,
       observado_en: draft.observado_en,
     });
+  }
+
+  getById(remoteId: number): Promise<RemoteAvistamiento> {
+    return this.client.get<RemoteAvistamiento>(`/api/v1/avistamientos/${remoteId}`);
   }
 
   compartir(remoteId: number): Promise<CreateAvistamientoResponse> {
