@@ -1,6 +1,8 @@
 import type {AvistamientoDraft} from '../../types/avistamiento';
 import {
   enqueueAvistamiento,
+  enqueueIdentificacion,
+  listPendingIdentificaciones,
   listPendingMutations,
   markMutationFailed,
   markMutationRejected,
@@ -81,8 +83,103 @@ describe('listPendingMutations', () => {
     const mutations = await listPendingMutations();
 
     expect(mutations).toHaveLength(1);
-    expect(mutations[0]?.payload.local_id).toBe('local-1');
-    expect(mutations[0]?.payload.reino).toBe('fungi');
+    const [mutation] = mutations;
+    expect(mutation?.type).toBe('create_avistamiento');
+    if (mutation?.type !== 'create_avistamiento') {
+      throw new Error('se esperaba una mutación de avistamiento');
+    }
+    expect(mutation.payload.local_id).toBe('local-1');
+    expect(mutation.payload.reino).toBe('fungi');
+  });
+
+  it('distingue las identificaciones por el type de la fila', async () => {
+    mockQuerySql.mockResolvedValueOnce([
+      {
+        id: 'local-2',
+        type: 'create_identificacion',
+        payload: JSON.stringify({
+          avistamiento_id: 12,
+          especie_id: 42,
+          comentario: null,
+        }),
+        status: 'pending',
+        attempts: 0,
+        last_error: null,
+        created_at: '2026-07-16T12:00:00.000Z',
+        updated_at: '2026-07-16T12:00:00.000Z',
+      },
+    ]);
+
+    const [mutation] = await listPendingMutations();
+
+    expect(mutation?.type).toBe('create_identificacion');
+    if (mutation?.type !== 'create_identificacion') {
+      throw new Error('se esperaba una mutación de identificación');
+    }
+    expect(mutation.payload.avistamiento_id).toBe(12);
+  });
+});
+
+describe('enqueueIdentificacion', () => {
+  it('encola sin tocar local_avistamientos', async () => {
+    const mutation = await enqueueIdentificacion({
+      avistamiento_id: 12,
+      especie_id: 42,
+      comentario: '  ',
+    });
+
+    expect(mutation.type).toBe('create_identificacion');
+    expect(mutation.status).toBe('pending');
+
+    // Un único INSERT: la identificación no tiene tabla local propia.
+    expect(mockExecuteSql).toHaveBeenCalledTimes(1);
+    const [sql, params] = mockExecuteSql.mock.calls[0] ?? [];
+    expect(sql).toContain('INSERT INTO mutation_queue');
+    expect(params?.[1]).toBe('create_identificacion');
+    expect(JSON.parse(params?.[2] as string)).toEqual({
+      avistamiento_id: 12,
+      especie_id: 42,
+      comentario: '  ',
+    });
+  });
+
+  it('markMutationSynced sin remote_id no toca el avistamiento local', async () => {
+    await markMutationSynced('local-2', null);
+
+    expect(mockExecuteSql).toHaveBeenCalledTimes(1);
+    expect(mockExecuteSql.mock.calls[0]?.[0]).toContain("status = 'synced'");
+  });
+});
+
+describe('listPendingIdentificaciones', () => {
+  const fila = (id: string, avistamientoId: number) => ({
+    id,
+    type: 'create_identificacion' as const,
+    payload: JSON.stringify({
+      avistamiento_id: avistamientoId,
+      especie_id: 42,
+      comentario: null,
+    }),
+    status: 'pending' as const,
+    attempts: 0,
+    last_error: null,
+    created_at: '2026-07-16T12:00:00.000Z',
+    updated_at: '2026-07-16T12:00:00.000Z',
+  });
+
+  it('devuelve solo las del avistamiento pedido', async () => {
+    mockQuerySql.mockResolvedValueOnce([fila('local-2', 12), fila('local-3', 120)]);
+
+    const pendientes = await listPendingIdentificaciones(12);
+
+    expect(pendientes.map(item => item.id)).toEqual(['local-2']);
+  });
+
+  it('incluye las rechazadas para poder mostrárselas al usuario', async () => {
+    await listPendingIdentificaciones(12);
+
+    const [sql] = mockQuerySql.mock.calls[0] ?? [];
+    expect(sql).toContain("status != 'synced'");
   });
 });
 

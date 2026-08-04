@@ -1,5 +1,5 @@
 import NetInfo from '@react-native-community/netinfo';
-import {avistamientosApi} from '../api';
+import {avistamientosApi, identificacionesApi} from '../api';
 import {ApiError} from '../api/errors';
 import {
   listPendingMutations,
@@ -55,6 +55,12 @@ export const syncPendingMutations = async (): Promise<number> => {
 
           const response = await avistamientosApi.create(draft);
           await markMutationSynced(mutation.id, response.id);
+          synced += 1;
+        }
+
+        if (mutation.type === 'create_identificacion') {
+          await identificacionesApi.create(mutation.payload);
+          await markMutationSynced(mutation.id, null);
           synced += 1;
         }
       } catch (error) {

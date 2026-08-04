@@ -1,5 +1,5 @@
 import NetInfo from '@react-native-community/netinfo';
-import {avistamientosApi} from '../../api';
+import {avistamientosApi, identificacionesApi} from '../../api';
 import {ApiError} from '../../api/errors';
 import {
   listPendingMutations,
@@ -16,6 +16,7 @@ jest.mock('@react-native-community/netinfo', () => ({
 
 jest.mock('../../api', () => ({
   avistamientosApi: {create: jest.fn()},
+  identificacionesApi: {create: jest.fn()},
 }));
 
 jest.mock('../../db/mutationQueue', () => ({
@@ -32,6 +33,7 @@ jest.mock('../../native/photoUpload', () => ({
 
 const mockNetInfoFetch = NetInfo.fetch as jest.MockedFunction<typeof NetInfo.fetch>;
 const mockCreate = avistamientosApi.create as jest.Mock;
+const mockCreateIdentificacion = identificacionesApi.create as jest.Mock;
 const mockList = listPendingMutations as jest.Mock;
 
 const pendingMutation = {
@@ -100,6 +102,55 @@ describe('syncPendingMutations', () => {
       'Network request failed',
     );
     expect(markMutationRejected).not.toHaveBeenCalled();
+  });
+
+  it('reenvía las identificaciones encoladas sin remote_id que enlazar', async () => {
+    mockList.mockResolvedValue([
+      {
+        id: 'local-9',
+        type: 'create_identificacion' as const,
+        payload: {avistamiento_id: 12, especie_id: 42, comentario: null},
+        status: 'pending' as const,
+        attempts: 0,
+        last_error: null,
+        created_at: '2026-07-16T12:00:00.000Z',
+        updated_at: '2026-07-16T12:00:00.000Z',
+      },
+    ]);
+    mockCreateIdentificacion.mockResolvedValueOnce({id: 5});
+
+    await expect(syncPendingMutations()).resolves.toBe(1);
+    expect(mockCreateIdentificacion).toHaveBeenCalledWith({
+      avistamiento_id: 12,
+      especie_id: 42,
+      comentario: null,
+    });
+    expect(markMutationSynced).toHaveBeenCalledWith('local-9', null);
+    expect(mockCreate).not.toHaveBeenCalled();
+  });
+
+  it('descarta la identificación duplicada (409) en vez de reintentarla', async () => {
+    mockList.mockResolvedValue([
+      {
+        id: 'local-9',
+        type: 'create_identificacion' as const,
+        payload: {avistamiento_id: 12, especie_id: 42, comentario: null},
+        status: 'pending' as const,
+        attempts: 0,
+        last_error: null,
+        created_at: '2026-07-16T12:00:00.000Z',
+        updated_at: '2026-07-16T12:00:00.000Z',
+      },
+    ]);
+    mockCreateIdentificacion.mockRejectedValueOnce(
+      new ApiError('ya identificaste este avistamiento', 409, null),
+    );
+
+    await expect(syncPendingMutations()).resolves.toBe(0);
+    expect(markMutationRejected).toHaveBeenCalledWith(
+      'local-9',
+      'ya identificaste este avistamiento',
+    );
   });
 
   it('no intenta nada sin conexión', async () => {

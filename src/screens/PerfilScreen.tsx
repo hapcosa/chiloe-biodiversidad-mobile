@@ -16,6 +16,7 @@ import type {LocalAvistamiento} from '../types/avistamiento';
 
 interface PerfilScreenProps {
   onOpenCamera: () => void;
+  onOpenAvistamiento: (avistamientoId: number) => void;
 }
 
 interface EncuentroConNombre extends LocalAvistamiento {
@@ -37,7 +38,10 @@ const syncStatusLabel: Record<LocalAvistamiento['sync_status'], string> = {
   rejected: 'El servidor lo rechazó',
 };
 
-export const PerfilScreen = ({onOpenCamera}: PerfilScreenProps): React.JSX.Element => {
+export const PerfilScreen = ({
+  onOpenAvistamiento,
+  onOpenCamera,
+}: PerfilScreenProps): React.JSX.Element => {
   const {logout, refreshProfile, updateAvatar, user} = useAuth();
   const [syncStatus, setSyncStatus] = useState<string | null>(null);
   const [isSyncing, setIsSyncing] = useState(false);
@@ -281,6 +285,18 @@ export const PerfilScreen = ({onOpenCamera}: PerfilScreenProps): React.JSX.Eleme
                 {syncStatusLabel[encuentro.sync_status]}
               </Text>
               <View style={styles.encuentroActions}>
+                {/* Las identificaciones viven en el servidor: hasta que el
+                    encuentro no se sincroniza no hay nada que discutir. */}
+                {encuentro.remote_id ? (
+                  <Pressable
+                    accessibilityRole="button"
+                    onPress={() =>
+                      encuentro.remote_id && onOpenAvistamiento(encuentro.remote_id)
+                    }
+                    style={styles.shareButton}>
+                    <Text style={styles.shareButtonText}>Ver identificaciones</Text>
+                  </Pressable>
+                ) : null}
                 {encuentro.remote_id ? (
                   <Pressable
                     accessibilityRole="button"
