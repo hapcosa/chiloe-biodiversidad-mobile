@@ -129,6 +129,52 @@ export const upsertSpecies = async (speciesList: Species[]): Promise<void> => {
   }
 };
 
+// Borra del cache las especies que el servidor ya no devuelve: fichas
+// despublicadas, eliminadas, o restos de un seed anterior con otros ids. El
+// sync solo hacía upsert, así que esas filas sobrevivían para siempre.
+//
+// Se apoya en una tabla temporal en vez de un `NOT IN (?, ?, …)` porque la
+// lista de ids crece con el catálogo y SQLite limita los parámetros por
+// sentencia.
+export const pruneSpeciesNotIn = async (ids: number[]): Promise<number> => {
+  await executeSql(
+    'CREATE TEMP TABLE IF NOT EXISTS species_sync_ids (id INTEGER PRIMARY KEY)',
+  );
+  await executeSql('DELETE FROM species_sync_ids');
+
+  const chunkSize = 200;
+  for (let i = 0; i < ids.length; i += chunkSize) {
+    const chunk = ids.slice(i, i + chunkSize);
+    await executeSql(
+      `INSERT OR IGNORE INTO species_sync_ids (id) VALUES ${chunk
+        .map(() => '(?)')
+        .join(', ')}`,
+      chunk,
+    );
+  }
+
+  const obsoletas = await querySql<{id: number}>(
+    'SELECT id FROM species WHERE id NOT IN (SELECT id FROM species_sync_ids)',
+  );
+
+  if (obsoletas.length > 0) {
+    await executeSql(
+      'DELETE FROM species WHERE id NOT IN (SELECT id FROM species_sync_ids)',
+    );
+    // Sin esto, el perfil seguiría contando como guardadas o vistas especies
+    // que ya no se pueden abrir.
+    await executeSql(
+      'DELETE FROM especies_guardadas WHERE especie_id NOT IN (SELECT id FROM species)',
+    );
+    await executeSql(
+      'DELETE FROM especies_vistas WHERE especie_id NOT IN (SELECT id FROM species)',
+    );
+  }
+
+  await executeSql('DROP TABLE IF EXISTS temp.species_sync_ids');
+  return obsoletas.length;
+};
+
 export const listCachedSpecies = async (
   filters: Pick<SpeciesFilters, 'reino' | 'q' | 'limit' | 'offset'> = {},
 ): Promise<Species[]> => {

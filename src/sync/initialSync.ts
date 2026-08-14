@@ -1,6 +1,6 @@
 import {speciesApi} from '../api';
 import {initializeDatabase} from '../db/connection';
-import {upsertSpecies} from '../db/speciesCache';
+import {pruneSpeciesNotIn, upsertSpecies} from '../db/speciesCache';
 import {setSyncState} from '../db/syncState';
 
 interface InitialSyncOptions {
@@ -15,6 +15,7 @@ export const runInitialSpeciesSync = async (
   let offset = 0;
   let total = 0;
   let synced = 0;
+  const idsVistos = new Set<number>();
 
   await initializeDatabase();
 
@@ -28,6 +29,9 @@ export const runInitialSpeciesSync = async (
 
     total = response.pagination.total;
     await upsertSpecies(response.data);
+    for (const species of response.data) {
+      idsVistos.add(species.id);
+    }
 
     synced += response.data.length;
     offset += response.data.length;
@@ -38,7 +42,14 @@ export const runInitialSpeciesSync = async (
     }
   } while (synced < total);
 
+  // Solo reconciliamos si el barrido llegó hasta el final: con un recorrido
+  // parcial (página vacía antes de tiempo) borraríamos especies que sí
+  // existen. Se compara contra los ids únicos porque un cambio de orden entre
+  // páginas puede repetir filas e inflar `synced`.
+  if (idsVistos.size >= total) {
+    await pruneSpeciesNotIn([...idsVistos]);
+  }
+
   await setSyncState('species.initialSyncAt', new Date().toISOString());
   return synced;
 };
-
