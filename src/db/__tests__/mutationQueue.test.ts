@@ -2,8 +2,10 @@ import type {AvistamientoDraft} from '../../types/avistamiento';
 import {
   enqueueAvistamiento,
   enqueueIdentificacion,
+  enqueueRetiroIdentificacion,
   listPendingIdentificaciones,
   listPendingMutations,
+  listPendingRetiros,
   markMutationFailed,
   markMutationRejected,
   markMutationSynced,
@@ -118,6 +120,29 @@ describe('listPendingMutations', () => {
     }
     expect(mutation.payload.avistamiento_id).toBe(12);
   });
+
+  it('distingue los retiros por el type de la fila', async () => {
+    mockQuerySql.mockResolvedValueOnce([
+      {
+        id: 'retiro-identificacion-99',
+        type: 'retirar_identificacion',
+        payload: JSON.stringify({avistamiento_id: 12, identificacion_id: 99}),
+        status: 'pending',
+        attempts: 0,
+        last_error: null,
+        created_at: '2026-07-16T12:00:00.000Z',
+        updated_at: '2026-07-16T12:00:00.000Z',
+      },
+    ]);
+
+    const [mutation] = await listPendingMutations();
+
+    expect(mutation?.type).toBe('retirar_identificacion');
+    if (mutation?.type !== 'retirar_identificacion') {
+      throw new Error('se esperaba una mutación de retiro');
+    }
+    expect(mutation.payload.identificacion_id).toBe(99);
+  });
 });
 
 describe('enqueueIdentificacion', () => {
@@ -179,6 +204,80 @@ describe('listPendingIdentificaciones', () => {
     await listPendingIdentificaciones(12);
 
     const [sql] = mockQuerySql.mock.calls[0] ?? [];
+    expect(sql).toContain("status != 'synced'");
+  });
+});
+
+describe('enqueueRetiroIdentificacion', () => {
+  it('encola el retiro con el id remoto en el payload', async () => {
+    const mutation = await enqueueRetiroIdentificacion({
+      avistamiento_id: 12,
+      identificacion_id: 99,
+    });
+
+    expect(mutation.type).toBe('retirar_identificacion');
+    expect(mutation.status).toBe('pending');
+
+    expect(mockExecuteSql).toHaveBeenCalledTimes(1);
+    const [sql, params] = mockExecuteSql.mock.calls[0] ?? [];
+    expect(sql).toContain('INSERT INTO mutation_queue');
+    expect(params?.[1]).toBe('retirar_identificacion');
+    expect(JSON.parse(params?.[2] as string)).toEqual({
+      avistamiento_id: 12,
+      identificacion_id: 99,
+    });
+  });
+
+  // Pulsar dos veces "retirar" (o volver a intentarlo tras un fallo) no puede
+  // dejar dos DELETE encolados para la misma identificación.
+  it('usa el id remoto como clave y reencola sobre la misma fila', async () => {
+    const primera = await enqueueRetiroIdentificacion({
+      avistamiento_id: 12,
+      identificacion_id: 99,
+    });
+    const segunda = await enqueueRetiroIdentificacion({
+      avistamiento_id: 12,
+      identificacion_id: 99,
+    });
+
+    expect(segunda.id).toBe(primera.id);
+    const [sql] = mockExecuteSql.mock.calls[0] ?? [];
+    expect(sql).toContain('ON CONFLICT(id) DO UPDATE');
+    expect(sql).toContain("status = 'pending'");
+  });
+});
+
+describe('listPendingRetiros', () => {
+  const fila = (id: string, avistamientoId: number, identificacionId: number) => ({
+    id,
+    type: 'retirar_identificacion' as const,
+    payload: JSON.stringify({
+      avistamiento_id: avistamientoId,
+      identificacion_id: identificacionId,
+    }),
+    status: 'pending' as const,
+    attempts: 0,
+    last_error: null,
+    created_at: '2026-07-16T12:00:00.000Z',
+    updated_at: '2026-07-16T12:00:00.000Z',
+  });
+
+  it('devuelve solo los del avistamiento pedido', async () => {
+    mockQuerySql.mockResolvedValueOnce([
+      fila('retiro-identificacion-99', 12, 99),
+      fila('retiro-identificacion-7', 120, 7),
+    ]);
+
+    const retiros = await listPendingRetiros(12);
+
+    expect(retiros.map(item => item.payload.identificacion_id)).toEqual([99]);
+  });
+
+  it('excluye los ya enviados: esos vienen retirados del servidor', async () => {
+    await listPendingRetiros(12);
+
+    const [sql] = mockQuerySql.mock.calls[0] ?? [];
+    expect(sql).toContain("type = 'retirar_identificacion'");
     expect(sql).toContain("status != 'synced'");
   });
 });

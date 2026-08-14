@@ -63,9 +63,31 @@ export const syncPendingMutations = async (): Promise<number> => {
           await markMutationSynced(mutation.id, null);
           synced += 1;
         }
+
+        if (mutation.type === 'retirar_identificacion') {
+          await identificacionesApi.retirar(
+            mutation.payload.avistamiento_id,
+            mutation.payload.identificacion_id,
+          );
+          await markMutationSynced(mutation.id, null);
+          synced += 1;
+        }
       } catch (error) {
         const message =
           error instanceof Error ? error.message : 'Error de sincronización';
+
+        // Retirar es idempotente desde el punto de vista del usuario: si el
+        // servidor dice que ya está retirada (409) o que no existe (404), el
+        // estado que se pidió ya es el actual. Marcarlo como rechazado dejaría
+        // un error visible por algo que salió bien.
+        if (
+          mutation.type === 'retirar_identificacion' &&
+          error instanceof ApiError &&
+          (error.status === 404 || error.status === 409)
+        ) {
+          await markMutationSynced(mutation.id, null);
+          continue;
+        }
 
         if (isPermanentRejection(error)) {
           await markMutationRejected(mutation.id, message);

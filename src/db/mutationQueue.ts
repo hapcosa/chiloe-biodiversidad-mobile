@@ -5,7 +5,10 @@ import type {
   MutationStatus,
   MutationType,
 } from '../types/avistamiento';
-import type {IdentificacionDraft} from '../types/identificacion';
+import type {
+  IdentificacionDraft,
+  RetiroIdentificacionDraft,
+} from '../types/identificacion';
 import {executeSql, initializeDatabase, querySql} from './connection';
 
 interface MutationQueueRow {
@@ -27,7 +30,15 @@ export type IdentificacionMutation = MutationQueueItem<IdentificacionDraft> & {
   type: 'create_identificacion';
 };
 
-export type PendingMutation = AvistamientoMutation | IdentificacionMutation;
+export type RetiroIdentificacionMutation =
+  MutationQueueItem<RetiroIdentificacionDraft> & {
+    type: 'retirar_identificacion';
+  };
+
+export type PendingMutation =
+  | AvistamientoMutation
+  | IdentificacionMutation
+  | RetiroIdentificacionMutation;
 
 interface LocalAvistamientoRow {
   local_id: string;
@@ -64,13 +75,26 @@ const rowToMutation = <T>(row: MutationQueueRow): MutationQueueItem<T> => ({
   updated_at: row.updated_at,
 });
 
-const rowToPendingMutation = (row: MutationQueueRow): PendingMutation =>
-  row.type === 'create_identificacion'
-    ? {...rowToMutation<IdentificacionDraft>(row), type: 'create_identificacion'}
-    : {
-        ...rowToMutation<AvistamientoDraft & {local_id: string}>(row),
-        type: 'create_avistamiento',
-      };
+const rowToPendingMutation = (row: MutationQueueRow): PendingMutation => {
+  if (row.type === 'create_identificacion') {
+    return {
+      ...rowToMutation<IdentificacionDraft>(row),
+      type: 'create_identificacion',
+    };
+  }
+
+  if (row.type === 'retirar_identificacion') {
+    return {
+      ...rowToMutation<RetiroIdentificacionDraft>(row),
+      type: 'retirar_identificacion',
+    };
+  }
+
+  return {
+    ...rowToMutation<AvistamientoDraft & {local_id: string}>(row),
+    type: 'create_avistamiento',
+  };
+};
 
 const rowToLocalAvistamiento =(row: LocalAvistamientoRow): LocalAvistamiento => ({
   local_id: row.local_id,
@@ -186,6 +210,73 @@ export const enqueueIdentificacion = async (
     created_at: now,
     updated_at: now,
   };
+};
+
+// Solo se retira lo que ya viajó al servidor, así que el id remoto identifica
+// la baja sin ambigüedad. Lo usamos como clave de la cola: reintentar sobre la
+// misma identificación reemplaza la fila en vez de encolar un segundo DELETE.
+const retiroMutationId = (identificacionId: number): string =>
+  `retiro-identificacion-${identificacionId}`;
+
+export const enqueueRetiroIdentificacion = async (
+  draft: RetiroIdentificacionDraft,
+): Promise<RetiroIdentificacionMutation> => {
+  await initializeDatabase();
+
+  const now = new Date().toISOString();
+  const id = retiroMutationId(draft.identificacion_id);
+
+  await executeSql(
+    `INSERT INTO mutation_queue (
+      id, type, payload, status, attempts, last_error, created_at, updated_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    ON CONFLICT(id) DO UPDATE SET
+      status = 'pending', attempts = 0, last_error = NULL, updated_at = excluded.updated_at`,
+    [
+      id,
+      'retirar_identificacion',
+      JSON.stringify(draft),
+      'pending',
+      0,
+      null,
+      now,
+      now,
+    ],
+  );
+
+  return {
+    id,
+    type: 'retirar_identificacion',
+    payload: draft,
+    status: 'pending',
+    attempts: 0,
+    last_error: null,
+    created_at: now,
+    updated_at: now,
+  };
+};
+
+// La pantalla de detalle las necesita para tachar de inmediato lo que el
+// servidor todavía muestra como vigente: sin esto, retirar sin red no se vería
+// hasta la próxima sincronización.
+export const listPendingRetiros = async (
+  avistamientoId: number,
+): Promise<RetiroIdentificacionMutation[]> => {
+  await initializeDatabase();
+
+  const rows = await querySql<MutationQueueRow>(
+    `SELECT * FROM mutation_queue
+     WHERE type = 'retirar_identificacion' AND status != 'synced'
+     ORDER BY created_at ASC`,
+  );
+
+  return rows
+    .map(rowToPendingMutation)
+    .filter(
+      (mutation): mutation is RetiroIdentificacionMutation =>
+        mutation.type === 'retirar_identificacion' &&
+        mutation.payload.avistamiento_id === avistamientoId,
+    );
 };
 
 export const listPendingMutations = async (
