@@ -10,7 +10,10 @@ export type MutationStatus =
   | 'failed'
   | 'rejected'
   | 'synced';
-export type MutationType = 'create_avistamiento' | 'create_identificacion';
+export type MutationType =
+  | 'create_avistamiento'
+  | 'create_identificacion'
+  | 'retirar_identificacion';
 
 export interface AvistamientoDraft {
   especie_id?: number | null;

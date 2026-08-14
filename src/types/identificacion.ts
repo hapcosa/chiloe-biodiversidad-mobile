@@ -30,6 +30,13 @@ export interface IdentificacionDraft {
   comentario?: string | null;
 }
 
+// Retirar es una baja lógica sobre una identificación que ya viajó, así que a
+// diferencia del alta necesita el id remoto además del avistamiento.
+export interface RetiroIdentificacionDraft {
+  avistamiento_id: number;
+  identificacion_id: number;
+}
+
 export interface IdentificacionListResponse {
   success: boolean;
   data: Identificacion[];

@@ -12,7 +12,9 @@ import {identificacionesApi, avistamientosApi} from '../api';
 import {useAuth} from '../auth/AuthContext';
 import {
   enqueueIdentificacion,
+  enqueueRetiroIdentificacion,
   listPendingIdentificaciones,
+  listPendingRetiros,
   type IdentificacionMutation,
 } from '../db/mutationQueue';
 import {getCachedSpecies, listCachedSpecies} from '../db/speciesCache';
@@ -62,6 +64,9 @@ export const AvistamientoDetailScreen = ({
   const [avistamiento, setAvistamiento] = useState<RemoteAvistamiento | null>(null);
   const [identificaciones, setIdentificaciones] = useState<Identificacion[]>([]);
   const [pendientes, setPendientes] = useState<IdentificacionMutation[]>([]);
+  // Ids de identificaciones cuyo retiro está encolado: el servidor todavía las
+  // devuelve como vigentes.
+  const [retirosEnCola, setRetirosEnCola] = useState<number[]>([]);
   const [nombres, setNombres] = useState<Record<number, string>>({});
   const [isLoading, setIsLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -96,15 +101,17 @@ export const AvistamientoDetailScreen = ({
   const cargar = useCallback(async (): Promise<void> => {
     setLoadError(null);
     try {
-      const [detalle, lista, enCola] = await Promise.all([
+      const [detalle, lista, enCola, retiros] = await Promise.all([
         avistamientosApi.getById(avistamientoId),
         identificacionesApi.list(avistamientoId),
         listPendingIdentificaciones(avistamientoId),
+        listPendingRetiros(avistamientoId),
       ]);
 
       setAvistamiento(detalle);
       setIdentificaciones(lista);
       setPendientes(enCola);
+      setRetirosEnCola(retiros.map(retiro => retiro.payload.identificacion_id));
       await resolverNombres([
         ...lista.map(item => item.especie_id),
         ...enCola.map(item => item.payload.especie_id),
@@ -168,7 +175,13 @@ export const AvistamientoDetailScreen = ({
     setRetirandoId(identificacion.id);
     setActionError(null);
     try {
-      await identificacionesApi.retirar(avistamientoId, identificacion.id);
+      await enqueueRetiroIdentificacion({
+        avistamiento_id: avistamientoId,
+        identificacion_id: identificacion.id,
+      });
+      // Igual que al sugerir: intentamos enviarlo ya, y sin red queda en la cola
+      // en vez de fallar. La tarjeta se tacha igual (ver estaRetirada).
+      await syncPendingMutations();
       await cargar();
     } catch (error) {
       setActionError(
@@ -179,13 +192,21 @@ export const AvistamientoDetailScreen = ({
     }
   };
 
+  // Un retiro encolado se muestra como retirada aunque el servidor aún la
+  // devuelva vigente: para el usuario la acción ya ocurrió.
+  const estaRetirada = useCallback(
+    (item: Identificacion): boolean =>
+      item.retirada || retirosEnCola.includes(item.id),
+    [retirosEnCola],
+  );
+
   const vigentes = useMemo(
-    () => identificaciones.filter(item => !item.retirada),
-    [identificaciones],
+    () => identificaciones.filter(item => !estaRetirada(item)),
+    [identificaciones, estaRetirada],
   );
   const retiradas = useMemo(
-    () => identificaciones.filter(item => item.retirada),
-    [identificaciones],
+    () => identificaciones.filter(estaRetirada),
+    [identificaciones, estaRetirada],
   );
   const yaIdentifique = useMemo(
     () => vigentes.some(item => item.usuario_id === user?.id),
@@ -202,31 +223,42 @@ export const AvistamientoDetailScreen = ({
 
   const grado = avistamiento?.grado_identificacion ?? 'sin_identificar';
 
-  const renderIdentificacion = (item: Identificacion): React.JSX.Element => (
-    <View key={item.id} style={[styles.card, item.retirada && styles.cardRetirada]}>
-      <View style={styles.cardHeader}>
-        <Text style={styles.cardTitle}>{nombres[item.especie_id] ?? '...'}</Text>
-        {item.decisiva ? <Text style={styles.badgeCurador}>curador</Text> : null}
+  const renderIdentificacion = (item: Identificacion): React.JSX.Element => {
+    const retirada = estaRetirada(item);
+    const retiroSinEnviar = retirada && !item.retirada;
+
+    return (
+      <View key={item.id} style={[styles.card, retirada && styles.cardRetirada]}>
+        <View style={styles.cardHeader}>
+          <Text style={styles.cardTitle}>{nombres[item.especie_id] ?? '...'}</Text>
+          {item.decisiva ? <Text style={styles.badgeCurador}>curador</Text> : null}
+        </View>
+        {item.comentario ? <Text style={styles.cardBody}>{item.comentario}</Text> : null}
+        <Text style={styles.cardMeta}>
+          {item.usuario_id === user?.id ? 'Tú' : `Usuario #${item.usuario_id}`}
+          {formatFechaCorta(item.created_at)
+            ? ` · ${formatFechaCorta(item.created_at)}`
+            : ''}
+          {retiroSinEnviar
+            ? ' · retirada, pendiente de enviar'
+            : retirada
+              ? ' · retirada'
+              : ''}
+        </Text>
+        {!retirada && item.usuario_id === user?.id ? (
+          <Pressable
+            accessibilityRole="button"
+            disabled={retirandoId === item.id}
+            onPress={() => retirar(item)}
+            style={styles.linkButton}>
+            <Text style={styles.linkDanger}>
+              {retirandoId === item.id ? 'Retirando...' : 'Retirar mi identificación'}
+            </Text>
+          </Pressable>
+        ) : null}
       </View>
-      {item.comentario ? <Text style={styles.cardBody}>{item.comentario}</Text> : null}
-      <Text style={styles.cardMeta}>
-        {item.usuario_id === user?.id ? 'Tú' : `Usuario #${item.usuario_id}`}
-        {formatFechaCorta(item.created_at) ? ` · ${formatFechaCorta(item.created_at)}` : ''}
-        {item.retirada ? ' · retirada' : ''}
-      </Text>
-      {!item.retirada && item.usuario_id === user?.id ? (
-        <Pressable
-          accessibilityRole="button"
-          disabled={retirandoId === item.id}
-          onPress={() => retirar(item)}
-          style={styles.linkButton}>
-          <Text style={styles.linkDanger}>
-            {retirandoId === item.id ? 'Retirando...' : 'Retirar mi identificación'}
-          </Text>
-        </Pressable>
-      ) : null}
-    </View>
-  );
+    );
+  };
 
   return (
     <ScrollView contentContainerStyle={styles.container}>

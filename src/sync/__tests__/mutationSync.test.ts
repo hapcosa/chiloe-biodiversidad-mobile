@@ -16,7 +16,7 @@ jest.mock('@react-native-community/netinfo', () => ({
 
 jest.mock('../../api', () => ({
   avistamientosApi: {create: jest.fn()},
-  identificacionesApi: {create: jest.fn()},
+  identificacionesApi: {create: jest.fn(), retirar: jest.fn()},
 }));
 
 jest.mock('../../db/mutationQueue', () => ({
@@ -34,6 +34,7 @@ jest.mock('../../native/photoUpload', () => ({
 const mockNetInfoFetch = NetInfo.fetch as jest.MockedFunction<typeof NetInfo.fetch>;
 const mockCreate = avistamientosApi.create as jest.Mock;
 const mockCreateIdentificacion = identificacionesApi.create as jest.Mock;
+const mockRetirar = identificacionesApi.retirar as jest.Mock;
 const mockList = listPendingMutations as jest.Mock;
 
 const pendingMutation = {
@@ -151,6 +152,62 @@ describe('syncPendingMutations', () => {
       'local-9',
       'ya identificaste este avistamiento',
     );
+  });
+
+  describe('retiros encolados', () => {
+    const retiro = {
+      id: 'retiro-identificacion-99',
+      type: 'retirar_identificacion' as const,
+      payload: {avistamiento_id: 12, identificacion_id: 99},
+      status: 'pending' as const,
+      attempts: 0,
+      last_error: null,
+      created_at: '2026-07-16T12:00:00.000Z',
+      updated_at: '2026-07-16T12:00:00.000Z',
+    };
+
+    beforeEach(() => {
+      mockList.mockResolvedValue([retiro]);
+    });
+
+    it('manda el DELETE con el avistamiento y la identificación del payload', async () => {
+      mockRetirar.mockResolvedValueOnce({id: 99, retirada: true});
+
+      await expect(syncPendingMutations()).resolves.toBe(1);
+      expect(mockRetirar).toHaveBeenCalledWith(12, 99);
+      expect(markMutationSynced).toHaveBeenCalledWith('retiro-identificacion-99', null);
+    });
+
+    // Retirar es idempotente para el usuario: si ya estaba retirada o ya no
+    // existe, el estado pedido es el actual y no hay error que mostrar.
+    it.each([404, 409])('da por cumplido el retiro ante un %i', async status => {
+      mockRetirar.mockRejectedValueOnce(new ApiError('ya retirada', status, null));
+
+      await syncPendingMutations();
+      expect(markMutationSynced).toHaveBeenCalledWith('retiro-identificacion-99', null);
+      expect(markMutationRejected).not.toHaveBeenCalled();
+      expect(markMutationFailed).not.toHaveBeenCalled();
+    });
+
+    it('deja de reintentar si el servidor dice que no es tuya (403)', async () => {
+      mockRetirar.mockRejectedValueOnce(new ApiError('no es tuya', 403, null));
+
+      await syncPendingMutations();
+      expect(markMutationRejected).toHaveBeenCalledWith(
+        'retiro-identificacion-99',
+        'no es tuya',
+      );
+    });
+
+    it('reintenta el retiro cuando falla la red', async () => {
+      mockRetirar.mockRejectedValueOnce(new Error('Network request failed'));
+
+      await syncPendingMutations();
+      expect(markMutationFailed).toHaveBeenCalledWith(
+        'retiro-identificacion-99',
+        'Network request failed',
+      );
+    });
   });
 
   it('no intenta nada sin conexión', async () => {
