@@ -8,12 +8,14 @@ import {HomeScreen} from '../screens/HomeScreen';
 import {LoginScreen} from '../screens/LoginScreen';
 import {colors} from '../styles/theme';
 import {startMutationSyncWorker, syncPendingMutations} from '../sync/mutationSync';
+import {ComunidadStackNavigator} from './ComunidadStackNavigator';
 import {PerfilStackNavigator} from './PerfilStackNavigator';
 import {SpeciesStackNavigator} from './SpeciesStackNavigator';
 
 type RootTabParamList = {
   Home: undefined;
   Explorar: undefined;
+  Comunidad: undefined;
   Guardados: undefined;
   Perfil: undefined;
 };
@@ -21,6 +23,7 @@ type RootTabParamList = {
 const tabIcons: Record<keyof RootTabParamList, string> = {
   Home: '🏠',
   Explorar: '🔎',
+  Comunidad: '👥',
   Guardados: '🔖',
   Perfil: '🙋',
 };
@@ -85,6 +88,7 @@ export const AppNavigator = (): React.JSX.Element => {
       })}>
       <Tab.Screen component={HomeStack} name="Home" />
       <Tab.Screen component={ExplorarStack} name="Explorar" />
+      <Tab.Screen component={ComunidadStackNavigator} name="Comunidad" />
       <Tab.Screen component={GuardadosStack} name="Guardados" />
       <Tab.Screen component={PerfilStackNavigator} name="Perfil" />
     </Tab.Navigator>

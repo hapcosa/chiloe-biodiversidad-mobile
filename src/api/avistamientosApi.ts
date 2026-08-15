@@ -1,12 +1,29 @@
 import type {
   AvistamientoDraft,
+  AvistamientoFilters,
+  AvistamientoListResponse,
   CreateAvistamientoResponse,
   RemoteAvistamiento,
 } from '../types/avistamiento';
 import type {ApiClient} from './apiClient';
+import {buildQueryString} from './apiClient';
 
 export class AvistamientosApi {
   constructor(private readonly client: ApiClient) {}
+
+  // Encuentros de la comunidad. El servidor decide qué se ve: solo lo público y
+  // aprobado, ordenado por `observado_en` descendente. No hace falta (ni sirve)
+  // mandar `estado` ni `visibilidad`, los acota igual.
+  list(filters: AvistamientoFilters = {}): Promise<AvistamientoListResponse> {
+    const query = buildQueryString({
+      reino: filters.reino,
+      grado_identificacion: filters.grado_identificacion,
+      limit: filters.limit,
+      offset: filters.offset,
+    });
+
+    return this.client.get<AvistamientoListResponse>(`/api/v1/avistamientos${query}`);
+  }
 
   create(draft: AvistamientoDraft): Promise<CreateAvistamientoResponse> {
     return this.client.post<CreateAvistamientoResponse>('/api/v1/avistamientos', {
