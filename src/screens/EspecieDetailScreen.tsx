@@ -1,8 +1,10 @@
-import React, {useEffect, useState} from 'react';
+import React, {useEffect, useMemo, useState} from 'react';
+import type {StyleProp, TextStyle} from 'react-native';
 import {Image, Pressable, ScrollView, StyleSheet, Text, View} from 'react-native';
 import {listSavedSpeciesIds, saveSpecies, unsaveSpecies} from '../db/savedSpecies';
 import {colors, conservacionColors, reinoColors, reinoEmoji, spacing} from '../styles/theme';
 import type {Species} from '../types/domain';
+import {construirFicha} from '../utils/ficha';
 
 interface EspecieDetailScreenProps {
   species: Species;
@@ -12,6 +14,45 @@ interface EspecieDetailScreenProps {
 
 const catalogNumber = (id: number): string => `N° ${String(id).padStart(3, '0')}`;
 
+// A partir de acá el texto se colapsa. Un ScrollView anidado dentro del
+// ScrollView de la pantalla se pelearía por el gesto vertical, así que los
+// textos largos se recortan con "Leer más" en vez de scrollear por dentro.
+const LIMITE_COLAPSO = 280;
+// Dos fichas de hábitat/distribución lado a lado quedan ilegibles si el texto
+// es largo: por sobre esto se apilan a ancho completo.
+const LIMITE_APILADO = 110;
+
+interface TextoLargoProps {
+  texto: string;
+  style: StyleProp<TextStyle>;
+  lineasColapsadas?: number;
+}
+
+const TextoLargo = ({
+  texto,
+  style,
+  lineasColapsadas = 6,
+}: TextoLargoProps): React.JSX.Element => {
+  const [expandido, setExpandido] = useState(false);
+  const colapsable = texto.length > LIMITE_COLAPSO;
+
+  return (
+    <>
+      <Text numberOfLines={colapsable && !expandido ? lineasColapsadas : undefined} style={style}>
+        {texto}
+      </Text>
+      {colapsable ? (
+        <Pressable
+          accessibilityRole="button"
+          hitSlop={8}
+          onPress={() => setExpandido(!expandido)}>
+          <Text style={styles.leerMas}>{expandido ? 'Leer menos ▲' : 'Leer más ▼'}</Text>
+        </Pressable>
+      ) : null}
+    </>
+  );
+};
+
 export const EspecieDetailScreen = ({
   species,
   onBack,
@@ -19,6 +60,10 @@ export const EspecieDetailScreen = ({
 }: EspecieDetailScreenProps): React.JSX.Element => {
   const [isSaved, setIsSaved] = useState(false);
   const conservacionColor = conservacionColors[species.estado_conservacion] ?? colors.muted;
+  const ficha = useMemo(() => construirFicha(species), [species]);
+  const factsApilados =
+    (species.habitat?.length ?? 0) > LIMITE_APILADO ||
+    (species.distribucion_chiloe?.length ?? 0) > LIMITE_APILADO;
 
   useEffect(() => {
     let cancelled = false;
@@ -89,19 +134,23 @@ export const EspecieDetailScreen = ({
         ) : null}
       </View>
 
-      <View style={styles.factsRow}>
+      <View style={[styles.factsRow, factsApilados && styles.factsColumn]}>
         {species.habitat ? (
           <View style={styles.factCard}>
             <Text style={styles.factIcon}>📍</Text>
             <Text style={styles.factLabel}>HÁBITAT</Text>
-            <Text style={styles.factValue}>{species.habitat}</Text>
+            <TextoLargo lineasColapsadas={4} style={styles.factValue} texto={species.habitat} />
           </View>
         ) : null}
         {species.distribucion_chiloe ? (
           <View style={styles.factCard}>
             <Text style={styles.factIcon}>🗺️</Text>
             <Text style={styles.factLabel}>DISTRIBUCIÓN</Text>
-            <Text style={styles.factValue}>{species.distribucion_chiloe}</Text>
+            <TextoLargo
+              lineasColapsadas={4}
+              style={styles.factValue}
+              texto={species.distribucion_chiloe}
+            />
           </View>
         ) : null}
       </View>
@@ -112,8 +161,43 @@ export const EspecieDetailScreen = ({
 
       <View style={styles.card}>
         <Text style={styles.sectionTitle}>Sobre la especie</Text>
-        <Text style={styles.paragraph}>{species.descripcion}</Text>
+        <TextoLargo style={styles.paragraph} texto={species.descripcion} />
       </View>
+
+      {ficha.length > 0 ? (
+        <View style={styles.card}>
+          <Text style={styles.sectionTitle}>Ficha</Text>
+          {ficha.map(seccion => (
+            <View
+              key={seccion.titulo}
+              style={[styles.fichaSection, seccion.destacada && styles.fichaSectionDestacada]}>
+              <Text style={styles.fichaSectionTitle}>
+                {seccion.emoji} {seccion.titulo}
+              </Text>
+              {seccion.items.map(item => (
+                <View key={item.label} style={styles.fichaItem}>
+                  <Text style={styles.fichaLabel}>{item.label}</Text>
+                  <TextoLargo lineasColapsadas={5} style={styles.fichaValue} texto={item.value} />
+                </View>
+              ))}
+              {seccion.destacada ? (
+                <Text style={styles.fichaDisclaimer}>
+                  Nunca consumas un hongo por lo que diga esta app: consulta a un experto antes.
+                </Text>
+              ) : null}
+            </View>
+          ))}
+        </View>
+      ) : null}
+
+      {species.reino === 'fungi' && !ficha.some(seccion => seccion.destacada) ? (
+        <View style={[styles.card, styles.fichaSectionDestacada]}>
+          <Text style={styles.fichaDisclaimer}>
+            Esta ficha no registra la comestibilidad. Nunca consumas un hongo sin consultar a un
+            experto.
+          </Text>
+        </View>
+      ) : null}
 
       {species.imagenes_urls?.length > 1 ? (
         <View style={styles.card}>
@@ -244,6 +328,57 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     gap: spacing.md,
     marginTop: spacing.lg,
+  },
+  factsColumn: {
+    flexDirection: 'column',
+  },
+  leerMas: {
+    color: colors.primary,
+    fontSize: 13,
+    fontWeight: '800',
+    marginTop: spacing.xs,
+  },
+  fichaSection: {
+    borderTopColor: colors.border,
+    borderTopWidth: 1,
+    marginTop: spacing.sm,
+    paddingTop: spacing.md,
+  },
+  fichaSectionDestacada: {
+    backgroundColor: `${colors.secondary}11`,
+    borderRadius: 12,
+    borderTopWidth: 0,
+    marginTop: 0,
+    marginBottom: spacing.sm,
+    padding: spacing.md,
+  },
+  fichaSectionTitle: {
+    color: colors.text,
+    fontSize: 15,
+    fontWeight: '800',
+    marginBottom: spacing.sm,
+  },
+  fichaItem: {
+    marginBottom: spacing.sm,
+  },
+  fichaLabel: {
+    color: colors.muted,
+    fontSize: 11,
+    fontWeight: '700',
+    letterSpacing: 0.5,
+    textTransform: 'uppercase',
+  },
+  fichaValue: {
+    color: colors.text,
+    fontSize: 15,
+    lineHeight: 21,
+    marginTop: 2,
+  },
+  fichaDisclaimer: {
+    color: colors.secondary,
+    fontSize: 13,
+    fontWeight: '700',
+    lineHeight: 18,
   },
   factCard: {
     backgroundColor: colors.surface,
