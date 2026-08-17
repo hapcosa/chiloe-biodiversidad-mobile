@@ -7,6 +7,7 @@ import {GuardadosScreen} from '../screens/GuardadosScreen';
 import {HomeScreen} from '../screens/HomeScreen';
 import {LoginScreen} from '../screens/LoginScreen';
 import {colors} from '../styles/theme';
+import {ensureInitialSpeciesSync} from '../sync/initialSync';
 import {startMutationSyncWorker, syncPendingMutations} from '../sync/mutationSync';
 import {ComunidadStackNavigator} from './ComunidadStackNavigator';
 import {PerfilStackNavigator} from './PerfilStackNavigator';
@@ -58,6 +59,7 @@ export const AppNavigator = (): React.JSX.Element => {
       return undefined;
     }
 
+    void ensureInitialSpeciesSync();
     void syncPendingMutations();
     return startMutationSyncWorker();
   }, [session]);

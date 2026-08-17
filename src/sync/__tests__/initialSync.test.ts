@@ -1,6 +1,7 @@
 import {speciesApi} from '../../api';
 import {pruneSpeciesNotIn, upsertSpecies} from '../../db/speciesCache';
-import {runInitialSpeciesSync} from '../initialSync';
+import {getSyncState} from '../../db/syncState';
+import {ensureInitialSpeciesSync, runInitialSpeciesSync} from '../initialSync';
 
 jest.mock('../../api', () => ({
   speciesApi: {list: jest.fn()},
@@ -17,10 +18,12 @@ jest.mock('../../db/speciesCache', () => ({
 
 jest.mock('../../db/syncState', () => ({
   setSyncState: jest.fn().mockResolvedValue(undefined),
+  getSyncState: jest.fn().mockResolvedValue(null),
 }));
 
 const mockList = speciesApi.list as jest.Mock;
 const mockPrune = pruneSpeciesNotIn as jest.Mock;
+const mockGetSyncState = getSyncState as jest.Mock;
 
 const species = (id: number) => ({id, nombre_comun: `especie-${id}`});
 
@@ -87,5 +90,39 @@ describe('runInitialSpeciesSync', () => {
 
     await runInitialSpeciesSync({pageSize: 2});
     expect(mockPrune).not.toHaveBeenCalled();
+  });
+});
+
+describe('ensureInitialSpeciesSync', () => {
+  it('sincroniza si nunca se sincronizó', async () => {
+    mockGetSyncState.mockResolvedValueOnce(null);
+    mockList.mockResolvedValueOnce(pagina([1, 2], 2));
+
+    await ensureInitialSpeciesSync();
+    expect(mockList).toHaveBeenCalled();
+  });
+
+  it('no sincroniza si el último barrido es reciente', async () => {
+    mockGetSyncState.mockResolvedValueOnce(new Date().toISOString());
+
+    await ensureInitialSpeciesSync();
+    expect(mockList).not.toHaveBeenCalled();
+  });
+
+  it('vuelve a sincronizar pasado un día', async () => {
+    const hace2Dias = new Date(Date.now() - 2 * 24 * 60 * 60 * 1000);
+    mockGetSyncState.mockResolvedValueOnce(hace2Dias.toISOString());
+    mockList.mockResolvedValueOnce(pagina([1], 1));
+
+    await ensureInitialSpeciesSync();
+    expect(mockList).toHaveBeenCalled();
+  });
+
+  // Es trabajo de fondo del arranque: si revienta, no puede tumbar la sesión.
+  it('se traga el error si no hay red', async () => {
+    mockGetSyncState.mockResolvedValueOnce(null);
+    mockList.mockRejectedValueOnce(new Error('sin red'));
+
+    await expect(ensureInitialSpeciesSync()).resolves.toBeUndefined();
   });
 });
