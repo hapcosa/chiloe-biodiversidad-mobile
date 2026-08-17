@@ -91,26 +91,37 @@ class ChiloeCameraPreviewView(context: Context) :
             (geometry.orientationDegrees + deviceOrientation) % 360
         }
 
+        // Tamaño con el que el buffer termina *dibujado*: al girar un cuarto de
+        // vuelta, el lado largo del sensor pasa a ser el alto de la vista.
         val quarterTurn = rotation == 90 || rotation == 270
-        val contentWidth = if (quarterTurn) geometry.previewHeight else geometry.previewWidth
-        val contentHeight = if (quarterTurn) geometry.previewWidth else geometry.previewHeight
+        val shownWidth = if (quarterTurn) geometry.previewHeight else geometry.previewWidth
+        val shownHeight = if (quarterTurn) geometry.previewWidth else geometry.previewHeight
 
         val viewRect = RectF(0f, 0f, width.toFloat(), height.toFloat())
         val centerX = viewRect.centerX()
         val centerY = viewRect.centerY()
 
         // La vista dibuja el buffer estirado a sus bordes; el primer paso lo
-        // devuelve a su relación de aspecto real, centrado.
-        val contentRect = RectF(0f, 0f, contentWidth.toFloat(), contentHeight.toFloat())
+        // devuelve a su relación de aspecto real, centrado. Aquí van las
+        // dimensiones del buffer *sin* intercambiar: el intercambio lo hace
+        // después `postRotate`, y aplicarlo también aquí deformaba la imagen y
+        // la dejaba como una franja apaisada con bandas negras arriba y abajo.
+        val contentRect = RectF(
+            0f,
+            0f,
+            geometry.previewWidth.toFloat(),
+            geometry.previewHeight.toFloat(),
+        )
         contentRect.offset(centerX - contentRect.centerX(), centerY - contentRect.centerY())
 
         val matrix = Matrix()
         matrix.setRectToRect(viewRect, contentRect, Matrix.ScaleToFit.FILL)
 
-        // Recorte centrado: se agranda hasta cubrir la vista sin deformar.
+        // Recorte centrado: se agranda hasta cubrir la vista sin deformar. Se
+        // mide contra el tamaño ya girado, que es el que ocupa la pantalla.
         val scale = max(
-            viewRect.width() / contentWidth.toFloat(),
-            viewRect.height() / contentHeight.toFloat(),
+            viewRect.width() / shownWidth.toFloat(),
+            viewRect.height() / shownHeight.toFloat(),
         )
         matrix.postScale(scale, scale, centerX, centerY)
         matrix.postRotate(rotation.toFloat(), centerX, centerY)
