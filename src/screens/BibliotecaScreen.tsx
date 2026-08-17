@@ -33,6 +33,8 @@ const reinoOptions: Array<Reino | undefined> = [
 
 const catalogNumber = (id: number): string => `N° ${String(id).padStart(3, '0')}`;
 
+const PAGE_SIZE = 50;
+
 export const BibliotecaScreen = ({
   onSelectSpecies,
 }: BibliotecaScreenProps): React.JSX.Element => {
@@ -43,6 +45,8 @@ export const BibliotecaScreen = ({
   const [isOfflineData, setIsOfflineData] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [viewedIds, setViewedIds] = useState<Set<number>>(new Set());
+  const [total, setTotal] = useState(0);
+  const [isLoadingMore, setIsLoadingMore] = useState(false);
 
   const loadSpecies = useCallback(async () => {
     setIsLoading(true);
@@ -54,22 +58,24 @@ export const BibliotecaScreen = ({
       const response = await speciesApi.list({
         reino: selectedReino,
         q: query.trim() || undefined,
-        limit: 50,
+        limit: PAGE_SIZE,
         offset: 0,
         orderby: 'nombre_comun',
         orderdir: 'asc',
       });
       await upsertSpecies(response.data);
       setSpecies(response.data);
+      setTotal(response.pagination.total);
       setIsOfflineData(false);
     } catch (loadError) {
       const cached = await listCachedSpecies({
         reino: selectedReino,
         q: query.trim() || undefined,
-        limit: 50,
+        limit: PAGE_SIZE,
         offset: 0,
       });
       setSpecies(cached);
+      setTotal(cached.length);
       setIsOfflineData(true);
       setError(
         cached.length > 0
@@ -82,6 +88,38 @@ export const BibliotecaScreen = ({
       setIsLoading(false);
     }
   }, [query, selectedReino]);
+
+  // Sin esto la lista se quedaba en la primera página: con 103 especies en el
+  // catálogo, el usuario solo veía 50. Offline no se pagina porque el cache
+  // local no tiene más que lo ya traído.
+  const loadMore = useCallback(async () => {
+    if (isLoading || isLoadingMore || isOfflineData || species.length >= total) {
+      return;
+    }
+
+    setIsLoadingMore(true);
+    try {
+      const response = await speciesApi.list({
+        reino: selectedReino,
+        q: query.trim() || undefined,
+        limit: PAGE_SIZE,
+        offset: species.length,
+        orderby: 'nombre_comun',
+        orderdir: 'asc',
+      });
+      await upsertSpecies(response.data);
+      setSpecies(previous => {
+        const vistos = new Set(previous.map(item => item.id));
+        return [...previous, ...response.data.filter(item => !vistos.has(item.id))];
+      });
+      setTotal(response.pagination.total);
+    } catch {
+      // Una página que falla no invalida lo ya mostrado: se reintenta al
+      // volver a llegar al final de la lista.
+    } finally {
+      setIsLoadingMore(false);
+    }
+  }, [isLoading, isLoadingMore, isOfflineData, query, selectedReino, species.length, total]);
 
   useEffect(() => {
     const timeout = setTimeout(() => {
@@ -193,6 +231,13 @@ export const BibliotecaScreen = ({
           data={species}
           keyExtractor={item => String(item.id)}
           numColumns={2}
+          onEndReached={() => void loadMore()}
+          onEndReachedThreshold={0.4}
+          ListFooterComponent={
+            isLoadingMore ? (
+              <ActivityIndicator color={colors.primary} style={styles.footerLoader} />
+            ) : null
+          }
           refreshControl={
             <RefreshControl
               colors={[colors.primary]}
@@ -265,6 +310,9 @@ const styles = StyleSheet.create({
     color: colors.secondary,
     fontWeight: '700',
     marginBottom: spacing.sm,
+  },
+  footerLoader: {
+    marginVertical: spacing.lg,
   },
   loader: {
     marginTop: spacing.xl,
