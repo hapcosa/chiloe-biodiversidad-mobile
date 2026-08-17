@@ -8,7 +8,7 @@ import React, {
   type ReactNode,
 } from 'react';
 import {authApi, setApiAccessToken, setUnauthorizedHandler} from '../api';
-import {clearLocalUserData} from '../db/localUserData';
+import {clearLocalUserData, ensureLocalDataOwner} from '../db/localUserData';
 import type {StoredSession, UserPublic} from '../types/domain';
 import {requestGoogleIdToken} from './googleSignIn';
 import {toStoredSession, tokenStore} from './tokenStore';
@@ -37,6 +37,13 @@ export const AuthProvider = ({children}: {children: ReactNode}): React.JSX.Eleme
   const [isLoading, setIsLoading] = useState(true);
 
   const applySession = useCallback(async (nextSession: StoredSession | null) => {
+    // Antes de exponer la sesión: si los datos locales son de otra cuenta hay
+    // que borrarlos, o el perfil muestra los encuentros y las fotos del dueño
+    // anterior del teléfono.
+    if (nextSession) {
+      await ensureLocalDataOwner(nextSession.user.id);
+    }
+
     setSession(nextSession);
     setApiAccessToken(nextSession?.accessToken ?? null);
 
@@ -57,11 +64,13 @@ export const AuthProvider = ({children}: {children: ReactNode}): React.JSX.Eleme
       if (stored.expiresAt <= Date.now() + EXPIRY_MARGIN_MS) {
         const refreshed = await authApi.refresh(stored.refreshToken);
         const refreshedSession = toStoredSession(refreshed);
+        await ensureLocalDataOwner(refreshedSession.user.id);
         await persistSession(refreshedSession);
         setSession(refreshedSession);
         return;
       }
 
+      await ensureLocalDataOwner(stored.user.id);
       setApiAccessToken(stored.accessToken);
       setSession(stored);
     } catch {
