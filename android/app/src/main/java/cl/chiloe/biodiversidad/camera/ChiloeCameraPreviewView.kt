@@ -84,11 +84,12 @@ class ChiloeCameraPreviewView(context: Context) :
             return
         }
 
-        // El productor de Camera2 ya entrega el frame girado según el sensor: la
-        // cola de buffers lleva una transformación que el TextureView aplica al
-        // dibujar. Rotar aquí otra vez por `sensorOrientation` era lo que dejaba
-        // la escena de lado. Solo queda compensar cuánto está girada la
-        // *pantalla* respecto de su orientación natural.
+        // Solo se compensa cuánto está girada la *pantalla* respecto de su
+        // orientación natural; el `sensorOrientation` NO entra en la cuenta.
+        // Es lo mismo que hace el ejemplo oficial Camera2Basic, que en
+        // ROTATION_0 no aplica transformación alguna: en la orientación natural
+        // el sensor ya queda derecho en pantalla. Sumar `sensorOrientation`
+        // aquí dejaba la escena de lado.
         val displayRotation = cameraModule()?.displayRotationDegrees() ?: 0
         val rotation = (360 - displayRotation) % 360
 
@@ -140,10 +141,18 @@ class ChiloeCameraPreviewView(context: Context) :
     private fun detach() {
         val surface = attachedSurface ?: return
         attachedSurface = null
-        if (sessionId >= 0) {
-            cameraModule()?.detachPreviewSurface(sessionId)
+        // Corre en el hilo de UI desde onSurfaceTextureDestroyed: cualquier
+        // excepción que escape de aquí cierra la app. Y el Surface se libera
+        // pase lo que pase, o se fuga el buffer.
+        try {
+            if (sessionId >= 0) {
+                cameraModule()?.detachPreviewSurface(sessionId)
+            }
+        } catch (error: Exception) {
+            Log.w(TAG, "detach: detachPreviewSurface failed sessionId=$sessionId", error)
+        } finally {
+            surface.release()
         }
-        surface.release()
     }
 
     // getNativeModule(Class) devuelve null en silencio bajo la Nueva
