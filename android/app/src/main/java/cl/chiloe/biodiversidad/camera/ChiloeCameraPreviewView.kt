@@ -84,34 +84,36 @@ class ChiloeCameraPreviewView(context: Context) :
             return
         }
 
-        val deviceOrientation = cameraModule()?.deviceOrientationDegrees() ?: 0
-        val rotation = if (geometry.frontFacing) {
-            ((geometry.orientationDegrees - deviceOrientation) % 360 + 360) % 360
-        } else {
-            (geometry.orientationDegrees + deviceOrientation) % 360
-        }
+        // El productor de Camera2 ya entrega el frame girado según el sensor: la
+        // cola de buffers lleva una transformación que el TextureView aplica al
+        // dibujar. Rotar aquí otra vez por `sensorOrientation` era lo que dejaba
+        // la escena de lado. Solo queda compensar cuánto está girada la
+        // *pantalla* respecto de su orientación natural.
+        val displayRotation = cameraModule()?.displayRotationDegrees() ?: 0
+        val rotation = (360 - displayRotation) % 360
 
-        // Tamaño con el que el buffer termina *dibujado*: al girar un cuarto de
-        // vuelta, el lado largo del sensor pasa a ser el alto de la vista.
+        // Dimensiones del contenido tal como llega ya girado por el sensor.
+        val sensorQuarterTurn =
+            geometry.orientationDegrees == 90 || geometry.orientationDegrees == 270
+        val baseWidth = if (sensorQuarterTurn) geometry.previewHeight else geometry.previewWidth
+        val baseHeight = if (sensorQuarterTurn) geometry.previewWidth else geometry.previewHeight
+
+        // Tamaño con el que termina *dibujado* tras compensar la pantalla.
         val quarterTurn = rotation == 90 || rotation == 270
-        val shownWidth = if (quarterTurn) geometry.previewHeight else geometry.previewWidth
-        val shownHeight = if (quarterTurn) geometry.previewWidth else geometry.previewHeight
+        val shownWidth = if (quarterTurn) baseHeight else baseWidth
+        val shownHeight = if (quarterTurn) baseWidth else baseHeight
 
         val viewRect = RectF(0f, 0f, width.toFloat(), height.toFloat())
         val centerX = viewRect.centerX()
         val centerY = viewRect.centerY()
 
-        // La vista dibuja el buffer estirado a sus bordes; el primer paso lo
-        // devuelve a su relación de aspecto real, centrado. Aquí van las
-        // dimensiones del buffer *sin* intercambiar: el intercambio lo hace
-        // después `postRotate`, y aplicarlo también aquí deformaba la imagen y
-        // la dejaba como una franja apaisada con bandas negras arriba y abajo.
-        val contentRect = RectF(
-            0f,
-            0f,
-            geometry.previewWidth.toFloat(),
-            geometry.previewHeight.toFloat(),
-        )
+        // La vista dibuja el contenido estirado a sus bordes; el primer paso lo
+        // devuelve a su relación de aspecto real, centrado. Van las dimensiones
+        // de *antes* de la rotación de pantalla: el intercambio que esa
+        // rotación provoca lo hace después `postRotate`, y aplicarlo también
+        // aquí deformaba la imagen y la dejaba como una franja apaisada con
+        // bandas negras arriba y abajo.
+        val contentRect = RectF(0f, 0f, baseWidth.toFloat(), baseHeight.toFloat())
         contentRect.offset(centerX - contentRect.centerX(), centerY - contentRect.centerY())
 
         val matrix = Matrix()
@@ -129,8 +131,8 @@ class ChiloeCameraPreviewView(context: Context) :
         Log.d(
             TAG,
             "applyPreviewTransform: buffer=${geometry.previewWidth}x${geometry.previewHeight} " +
-                "sensor=${geometry.orientationDegrees} device=$deviceOrientation rotation=$rotation " +
-                "view=${width}x$height",
+                "base=${baseWidth}x$baseHeight sensor=${geometry.orientationDegrees} " +
+                "display=$displayRotation rotation=$rotation view=${width}x$height",
         )
         setTransform(matrix)
     }

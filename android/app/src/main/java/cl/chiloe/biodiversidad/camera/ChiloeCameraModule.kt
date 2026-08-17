@@ -146,6 +146,17 @@ class ChiloeCameraModule(
             else -> 0
         }
 
+    // Cuánto está girada la *pantalla* respecto de su orientación natural, en
+    // grados. Es lo que hay que compensar en el preview, porque el productor de
+    // Camera2 ya entrega el frame girado según el sensor.
+    fun displayRotationDegrees(): Int =
+        when (displayRotation()) {
+            Surface.ROTATION_90 -> 90
+            Surface.ROTATION_180 -> 180
+            Surface.ROTATION_270 -> 270
+            else -> 0
+        }
+
     @Suppress("DEPRECATION")
     private fun displayRotation(): Int {
         val activity = reactContext.currentActivity
