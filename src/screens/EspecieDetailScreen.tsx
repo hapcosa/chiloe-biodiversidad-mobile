@@ -1,6 +1,8 @@
 import React, {useEffect, useMemo, useState} from 'react';
 import type {StyleProp, TextStyle} from 'react-native';
 import {Image, Pressable, ScrollView, StyleSheet, Text, View} from 'react-native';
+import {AvisoFauna} from '../components/AvisoFauna';
+import {requiereAvisoFauna} from '../content/avisos';
 import {listSavedSpeciesIds, saveSpecies, unsaveSpecies} from '../db/savedSpecies';
 import {colors, conservacionColors, reinoColors, reinoEmoji, spacing} from '../styles/theme';
 import type {Species} from '../types/domain';
@@ -117,6 +119,8 @@ export const EspecieDetailScreen = ({
         </Pressable>
       </View>
       <Text style={styles.scientificName}>{species.nombre_cientifico}</Text>
+
+      {requiereAvisoFauna(species.reino) ? <AvisoFauna /> : null}
 
       <View style={styles.badgeRow}>
         {species.estado_conservacion ? (

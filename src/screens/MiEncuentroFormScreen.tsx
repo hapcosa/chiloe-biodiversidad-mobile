@@ -9,6 +9,7 @@ import {
   TextInput,
   View,
 } from 'react-native';
+import {AVISO_FAUNA_ENCUENTRO, requiereAvisoFauna} from '../content/avisos';
 import {enqueueAvistamiento} from '../db/mutationQueue';
 import {markSpeciesViewed} from '../db/speciesViewed';
 import type {CameraCapture} from '../native/ChiloeCamera';
@@ -172,6 +173,12 @@ export const MiEncuentroFormScreen = ({
         )}
       </View>
 
+      {requiereAvisoFauna(species.reino) ? (
+        <View accessibilityRole="alert" style={styles.avisoFauna}>
+          <Text style={styles.avisoFaunaText}>{AVISO_FAUNA_ENCUENTRO}</Text>
+        </View>
+      ) : null}
+
       {saveError ? <Text style={styles.errorText}>{saveError}</Text> : null}
 
       <Pressable
@@ -202,6 +209,20 @@ const styles = StyleSheet.create({
     color: colors.primary,
     fontSize: 16,
     fontWeight: '700',
+  },
+  avisoFauna: {
+    backgroundColor: `${colors.secondary}1A`,
+    borderLeftColor: colors.secondary,
+    borderLeftWidth: 4,
+    borderRadius: 14,
+    marginBottom: spacing.md,
+    padding: spacing.md,
+  },
+  avisoFaunaText: {
+    color: colors.primaryDark,
+    fontSize: 13,
+    fontWeight: '700',
+    lineHeight: 19,
   },
   card: {
     backgroundColor: colors.surface,
