@@ -9,6 +9,22 @@ react {
 }
 
 def enableProguardInReleaseBuilds = false
+
+// Key del SDK de Google Maps para Android. Nunca se commitea: sale de
+// `android/local.properties` (ignorado por git) o de la variable de entorno
+// MAPS_API_KEY en el CI. Sin ella el mapa carga gris, pero el APK compila.
+def mapsApiKey = {
+    def propsFile = rootProject.file("local.properties")
+    if (propsFile.exists()) {
+        def props = new Properties()
+        propsFile.withInputStream { props.load(it) }
+        def value = props.getProperty("MAPS_API_KEY")
+        if (value != null && !value.isEmpty()) {
+            return value
+        }
+    }
+    return System.getenv("MAPS_API_KEY") ?: ""
+}()
 def jscFlavor = "io.github.react-native-community:jsc-android:2026004.+"
 
 android {
@@ -21,6 +37,8 @@ android {
         targetSdkVersion rootProject.ext.targetSdkVersion
         versionCode 1
         versionName "0.1.0"
+
+        manifestPlaceholders = [MAPS_API_KEY: mapsApiKey]
 
         externalNativeBuild {
             cmake {

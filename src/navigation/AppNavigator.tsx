@@ -10,6 +10,7 @@ import {CameraScreen} from '../screens/CameraScreen';
 import {GuardadosScreen} from '../screens/GuardadosScreen';
 import {HomeScreen} from '../screens/HomeScreen';
 import {LoginScreen} from '../screens/LoginScreen';
+import {MapaScreen} from '../screens/MapaScreen';
 import {colors} from '../styles/theme';
 import {ensureInitialSpeciesSync} from '../sync/initialSync';
 import {startMutationSyncWorker, syncPendingMutations} from '../sync/mutationSync';
@@ -21,6 +22,7 @@ type RootTabParamList = {
   Home: undefined;
   Explorar: undefined;
   Capturar: undefined;
+  Mapa: undefined;
   Comunidad: undefined;
   Guardados: undefined;
   Perfil: undefined;
@@ -30,6 +32,7 @@ const tabIcons: Record<keyof RootTabParamList, string> = {
   Home: '🏠',
   Explorar: '🔎',
   Capturar: '📷',
+  Mapa: '🗺️',
   Comunidad: '👥',
   Guardados: '🔖',
   Perfil: '🙋',
@@ -132,6 +135,7 @@ export const AppNavigator = (): React.JSX.Element => {
         name="Capturar"
         options={{tabBarLabel: 'Capturar'}}
       />
+      <Tab.Screen component={MapaScreen} name="Mapa" />
       <Tab.Screen component={ComunidadStackNavigator} name="Comunidad" />
       <Tab.Screen component={GuardadosStack} name="Guardados" />
       <Tab.Screen component={PerfilStackNavigator} name="Perfil" />
