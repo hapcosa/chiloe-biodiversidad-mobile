@@ -17,7 +17,7 @@ const TABLAS_PERSONALES = [
   'mutation_queue',
 ];
 
-// El progreso ("descubiertas", "guardadas"), los encuentros y la cola offline
+// El progreso (fichas consultadas, guardadas), los encuentros y la cola offline
 // son de la persona: si no se borran al cerrar sesión, la siguiente cuenta que
 // entre en el mismo teléfono los hereda.
 export const clearLocalUserData = async (): Promise<void> => {

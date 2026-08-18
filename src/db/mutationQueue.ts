@@ -35,6 +35,11 @@ export type RetiroIdentificacionMutation =
     type: 'retirar_identificacion';
   };
 
+export interface EncuentrosCount {
+  total: number;
+  especiesDistintas: number;
+}
+
 export type PendingMutation =
   | AvistamientoMutation
   | IdentificacionMutation
@@ -403,6 +408,26 @@ export const markMutationRejected = async (
      WHERE local_id = ?`,
     [now, id],
   );
+};
+
+/**
+ * Conteo de encuentros propios para el perfil. Cuenta lo que hay en este
+ * dispositivo —pendientes y ya sincronizados—; deja fuera los que el servidor
+ * rechazó. `especiesDistintas` ignora los encuentros sin especie asignada,
+ * porque hasta que la comunidad no los identifica no describen un recorrido.
+ */
+export const countEncuentros = async (): Promise<EncuentrosCount> => {
+  await initializeDatabase();
+  const rows = await querySql<{total: number; especies: number}>(
+    `SELECT COUNT(*) AS total, COUNT(DISTINCT especie_id) AS especies
+     FROM local_avistamientos
+     WHERE sync_status <> 'rejected'`,
+  );
+  const fila = rows[0];
+  return {
+    total: fila?.total ?? 0,
+    especiesDistintas: fila?.especies ?? 0,
+  };
 };
 
 export const listLocalAvistamientos = async (): Promise<LocalAvistamiento[]> => {

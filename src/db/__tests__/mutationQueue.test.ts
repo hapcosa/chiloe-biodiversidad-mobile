@@ -1,5 +1,6 @@
 import type {AvistamientoDraft} from '../../types/avistamiento';
 import {
+  countEncuentros,
   enqueueAvistamiento,
   enqueueIdentificacion,
   enqueueRetiroIdentificacion,
@@ -315,5 +316,30 @@ describe('transiciones de estado', () => {
 
     const [sql] = mockQuerySql.mock.calls[0] ?? [];
     expect(sql).not.toContain('rejected');
+  });
+});
+
+describe('countEncuentros', () => {
+  it('cuenta encuentros y especies distintas, y deja fuera los rechazados', async () => {
+    mockQuerySql.mockResolvedValueOnce([{total: 5, especies: 3}]);
+
+    await expect(countEncuentros()).resolves.toEqual({
+      total: 5,
+      especiesDistintas: 3,
+    });
+
+    const [sql] = mockQuerySql.mock.calls[0] ?? [];
+    expect(sql).toContain('FROM local_avistamientos');
+    expect(sql).toContain('COUNT(DISTINCT especie_id)');
+    expect(sql).toContain("sync_status <> 'rejected'");
+  });
+
+  it('devuelve ceros si la tabla está vacía', async () => {
+    mockQuerySql.mockResolvedValueOnce([]);
+
+    await expect(countEncuentros()).resolves.toEqual({
+      total: 0,
+      especiesDistintas: 0,
+    });
   });
 });
