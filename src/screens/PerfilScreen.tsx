@@ -4,7 +4,7 @@ import {avistamientosApi} from '../api';
 import {useAuth} from '../auth/AuthContext';
 import {initializeDatabase} from '../db/connection';
 import {getCachedSpecies, getLibraryStats} from '../db/speciesCache';
-import {listLocalAvistamientos} from '../db/mutationQueue';
+import {countEncuentros, listLocalAvistamientos} from '../db/mutationQueue';
 import {listSavedSpeciesIds} from '../db/savedSpecies';
 import {listViewedSpeciesIds} from '../db/speciesViewed';
 import type {CameraCapture} from '../native/ChiloeCamera';
@@ -25,7 +25,12 @@ interface EncuentroConNombre extends LocalAvistamiento {
 }
 
 interface ExploradorStats {
-  descubiertas: number;
+  /** Encuentros propios registrados, que es lo que se sale a hacer al campo. */
+  encuentros: number;
+  /** Especies distintas con encuentro propio: la medida real del recorrido. */
+  especiesConEncuentro: number;
+  /** Fichas abiertas en la biblioteca. Se conserva con su nombre verdadero. */
+  fichasConsultadas: number;
   guardadas: number;
   reinos: number;
   totalEspecies: number;
@@ -54,7 +59,9 @@ export const PerfilScreen = ({
   const [socialSharingId, setSocialSharingId] = useState<string | null>(null);
   const [socialShareError, setSocialShareError] = useState<string | null>(null);
   const [stats, setStats] = useState<ExploradorStats>({
-    descubiertas: 0,
+    encuentros: 0,
+    especiesConEncuentro: 0,
+    fichasConsultadas: 0,
     guardadas: 0,
     reinos: 0,
     totalEspecies: 0,
@@ -78,10 +85,11 @@ export const PerfilScreen = ({
 
   const loadStats = useCallback(async () => {
     await initializeDatabase();
-    const [viewedIds, savedIds, libraryStats] = await Promise.all([
+    const [viewedIds, savedIds, libraryStats, conteo] = await Promise.all([
       listViewedSpeciesIds(),
       listSavedSpeciesIds(),
       getLibraryStats(),
+      countEncuentros(),
     ]);
     const viewedSpecies = await Promise.all(
       Array.from(viewedIds).map(id => getCachedSpecies(id)),
@@ -91,7 +99,9 @@ export const PerfilScreen = ({
     );
 
     setStats({
-      descubiertas: viewedIds.size,
+      encuentros: conteo.total,
+      especiesConEncuentro: conteo.especiesDistintas,
+      fichasConsultadas: viewedIds.size,
       guardadas: savedIds.size,
       reinos: reinosVistos.size,
       totalEspecies: libraryStats.total,
@@ -181,8 +191,12 @@ export const PerfilScreen = ({
     );
   }
 
+  // El progreso de campo mide especies con encuentro propio, no fichas leídas:
+  // abrir una ficha desde el sillón no es haber recorrido nada.
   const progresoPct =
-    stats.totalEspecies > 0 ? Math.round((stats.descubiertas / stats.totalEspecies) * 100) : 0;
+    stats.totalEspecies > 0
+      ? Math.round((stats.especiesConEncuentro / stats.totalEspecies) * 100)
+      : 0;
 
   return (
     <ScrollView contentContainerStyle={styles.container}>
@@ -216,8 +230,8 @@ export const PerfilScreen = ({
 
       <View style={styles.statsRow}>
         <View style={styles.statCard}>
-          <Text style={styles.statValue}>{stats.descubiertas}</Text>
-          <Text style={styles.statLabel}>descubiertas</Text>
+          <Text style={styles.statValue}>{stats.encuentros}</Text>
+          <Text style={styles.statLabel}>encuentros</Text>
         </View>
         <View style={styles.statCard}>
           <Text style={styles.statValue}>{stats.guardadas}</Text>
@@ -237,7 +251,10 @@ export const PerfilScreen = ({
         <View style={[styles.progressFill, {width: `${progresoPct}%`}]} />
       </View>
       <Text style={styles.progressCaption}>
-        Has recorrido {stats.descubiertas} de {stats.totalEspecies} especies de esta guía.
+        Has encontrado {stats.especiesConEncuentro} de {stats.totalEspecies} especies de esta guía.
+      </Text>
+      <Text style={styles.progressCaption}>
+        Fichas consultadas: {stats.fichasConsultadas}.
       </Text>
 
       <View style={styles.tipCard}>
