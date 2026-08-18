@@ -22,6 +22,14 @@ interface AuthContextValue {
   logout: () => Promise<void>;
   refreshProfile: () => Promise<void>;
   updateAvatar: (avatarUrl: string) => Promise<void>;
+  updateProfile: (changes: ProfileChanges) => Promise<void>;
+}
+
+export interface ProfileChanges {
+  name?: string;
+  bio?: string;
+  profesion?: string;
+  perfil_publico?: boolean;
 }
 
 const AuthContext = createContext<AuthContextValue | undefined>(undefined);
@@ -141,6 +149,18 @@ export const AuthProvider = ({children}: {children: ReactNode}): React.JSX.Eleme
     [applySession, session],
   );
 
+  const updateProfile = useCallback(
+    async (changes: ProfileChanges) => {
+      if (!session) {
+        return;
+      }
+
+      const user = await authApi.updateProfile(changes);
+      await applySession({...session, user});
+    },
+    [applySession, session],
+  );
+
   const value = useMemo<AuthContextValue>(
     () => ({
       isLoading,
@@ -151,6 +171,7 @@ export const AuthProvider = ({children}: {children: ReactNode}): React.JSX.Eleme
       logout,
       refreshProfile,
       updateAvatar,
+      updateProfile,
     }),
     [
       isLoading,
@@ -160,6 +181,7 @@ export const AuthProvider = ({children}: {children: ReactNode}): React.JSX.Eleme
       logout,
       refreshProfile,
       updateAvatar,
+      updateProfile,
     ],
   );
 

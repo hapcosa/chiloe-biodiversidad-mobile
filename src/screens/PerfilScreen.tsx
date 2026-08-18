@@ -18,6 +18,7 @@ import type {LocalAvistamiento} from '../types/avistamiento';
 interface PerfilScreenProps {
   onOpenCamera: () => void;
   onOpenAvistamiento: (avistamientoId: number) => void;
+  onEditProfile: () => void;
 }
 
 interface EncuentroConNombre extends LocalAvistamiento {
@@ -45,6 +46,7 @@ const syncStatusLabel: Record<LocalAvistamiento['sync_status'], string> = {
 };
 
 export const PerfilScreen = ({
+  onEditProfile,
   onOpenAvistamiento,
   onOpenCamera,
 }: PerfilScreenProps): React.JSX.Element => {
@@ -224,6 +226,10 @@ export const PerfilScreen = ({
         <View style={styles.profileInfo}>
           <Text style={styles.profileName}>{user?.name || user?.email}</Text>
           <Text style={styles.profileMeta}>{user?.email}</Text>
+          {user?.bio ? <Text style={styles.profileBio}>{user.bio}</Text> : null}
+          <Text style={styles.profileVisibilidad}>
+            {user?.perfil_publico ? 'Perfil público' : 'Perfil privado'}
+          </Text>
         </View>
       </View>
       {avatarError ? <Text style={styles.avatarErrorText}>{avatarError}</Text> : null}
@@ -263,8 +269,14 @@ export const PerfilScreen = ({
         </Text>
       </View>
 
-      <Pressable accessibilityRole="button" onPress={refreshProfile} style={styles.secondaryButton}>
-        <Text style={styles.secondaryButtonText}>Actualizar perfil</Text>
+      <Pressable accessibilityRole="button" onPress={onEditProfile} style={styles.secondaryButton}>
+        <Text style={styles.secondaryButtonText}>Editar perfil</Text>
+      </Pressable>
+
+      {/* Lo que antes se llamaba "Actualizar perfil": no edita nada, solo
+          vuelve a pedir al servidor lo que ya tiene. */}
+      <Pressable accessibilityRole="button" onPress={refreshProfile} style={styles.linkButton}>
+        <Text style={styles.linkButtonText}>Recargar datos</Text>
       </Pressable>
 
       <Pressable
@@ -447,6 +459,28 @@ const styles = StyleSheet.create({
   profileMeta: {
     color: '#9CC2AE',
     marginTop: spacing.xs,
+  },
+  profileBio: {
+    color: colors.surface,
+    fontSize: 13,
+    lineHeight: 18,
+    marginTop: spacing.xs,
+  },
+  profileVisibilidad: {
+    color: '#9CC2AE',
+    fontSize: 12,
+    fontWeight: '700',
+    marginTop: spacing.xs,
+  },
+  linkButton: {
+    alignItems: 'center',
+    marginTop: spacing.sm,
+    minHeight: 32,
+  },
+  linkButtonText: {
+    color: colors.primary,
+    fontSize: 13,
+    fontWeight: '700',
   },
   statsRow: {
     flexDirection: 'row',

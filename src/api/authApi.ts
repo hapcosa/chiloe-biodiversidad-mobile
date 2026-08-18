@@ -1,4 +1,4 @@
-import type {AuthResponse, UserPublic} from '../types/domain';
+import type {AuthResponse, UserPerfilPublico, UserPublic} from '../types/domain';
 import type {ApiClient} from './apiClient';
 
 interface WhoAmIResponse {
@@ -39,8 +39,21 @@ export class AuthApi {
     return response.user;
   }
 
-  updateProfile(changes: {name?: string; avatar?: string}): Promise<UserPublic> {
+  // `bio` y `profesion` se mandan aunque vengan vacías: el backend distingue
+  // "no lo envió" de "quiere borrarlo", y borrar la bio tiene que ser posible.
+  updateProfile(changes: {
+    name?: string;
+    avatar?: string;
+    bio?: string;
+    profesion?: string;
+    perfil_publico?: boolean;
+  }): Promise<UserPublic> {
     return this.client.put<UserPublic>('/api/v1/auth/me', changes);
+  }
+
+  /** Responde 404 si esa persona no publicó su perfil. */
+  perfilPublico(usuarioId: number): Promise<UserPerfilPublico> {
+    return this.client.get<UserPerfilPublico>(`/api/v1/auth/usuarios/${usuarioId}/publico`);
   }
 }
 
