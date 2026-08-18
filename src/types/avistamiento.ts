@@ -5,6 +5,10 @@ export type AvistamientoEstado = 'pendiente' | 'aprobado' | 'rechazado';
 // Un encuentro nace privado; su autor lo publica con PATCH .../compartir.
 // Es un eje aparte de `estado`: público no significa aprobado.
 export type AvistamientoVisibilidad = 'privado' | 'publico';
+// Cuánto se fía quien registra de la ubicación que dio. `precision_metros` mide
+// el sensor; esto mide el recuerdo, y un encuentro de hace años solo tiene lo
+// segundo.
+export type PrecisionDeclarada = 'exacto' | 'aproximado' | 'zona';
 // `failed` es un fallo transitorio (sin red, 5xx) y se reintenta; `rejected` es
 // definitivo (el servidor rechazó el contenido) y no se reintenta nunca más.
 export type MutationStatus =
@@ -28,6 +32,7 @@ export interface AvistamientoDraft {
   geo_lat: number;
   geo_lng: number;
   precision_metros?: number | null;
+  precision_declarada: PrecisionDeclarada;
   observado_en: string;
 }
 
@@ -73,6 +78,7 @@ export interface RemoteAvistamiento {
   geo_lat: number;
   geo_lng: number;
   precision_metros?: number | null;
+  precision_declarada?: PrecisionDeclarada;
   observado_en?: string | null;
   creado_por?: number | null;
   estado: AvistamientoEstado;
