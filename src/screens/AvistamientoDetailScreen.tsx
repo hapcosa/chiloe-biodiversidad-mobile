@@ -28,6 +28,7 @@ import {formatFechaCorta} from '../utils/fechas';
 interface AvistamientoDetailScreenProps {
   avistamientoId: number;
   onBack: () => void;
+  onOpenPerfil: (usuarioId: number) => void;
 }
 
 const gradoLabels: Record<GradoIdentificacion, string> = {
@@ -59,6 +60,7 @@ const syncLabels: Record<IdentificacionMutation['status'], string> = {
 export const AvistamientoDetailScreen = ({
   avistamientoId,
   onBack,
+  onOpenPerfil,
 }: AvistamientoDetailScreenProps): React.JSX.Element => {
   const {user} = useAuth();
   const [avistamiento, setAvistamiento] = useState<RemoteAvistamiento | null>(null);
@@ -235,7 +237,15 @@ export const AvistamientoDetailScreen = ({
         </View>
         {item.comentario ? <Text style={styles.cardBody}>{item.comentario}</Text> : null}
         <Text style={styles.cardMeta}>
-          {item.usuario_id === user?.id ? 'Tú' : `Usuario #${item.usuario_id}`}
+          {item.usuario_id === user?.id ? (
+            'Tú'
+          ) : (
+            // Puerta a la vista pública: si esa persona no publicó su perfil
+            // la pantalla lo dice, que es respuesta suficiente.
+            <Text onPress={() => onOpenPerfil(item.usuario_id)} style={styles.linkInline}>
+              Usuario #{item.usuario_id}
+            </Text>
+          )}
           {formatFechaCorta(item.created_at)
             ? ` · ${formatFechaCorta(item.created_at)}`
             : ''}
@@ -611,6 +621,10 @@ const styles = StyleSheet.create({
   primaryButtonText: {
     color: colors.surface,
     fontWeight: '800',
+  },
+  linkInline: {
+    color: colors.primary,
+    fontWeight: '700',
   },
   linkButton: {
     marginTop: spacing.sm,

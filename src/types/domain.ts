@@ -73,6 +73,21 @@ export interface UserPublic {
   status: UserStatus;
   provider: string;
   email_verified: boolean;
+  bio: string;
+  profesion: string;
+  perfil_publico: boolean;
+  created_at: string;
+}
+
+/** Lo que la API deja ver de otra persona. Nunca trae email. */
+export interface UserPerfilPublico {
+  id: number;
+  name: string;
+  avatar: string;
+  role: UserRole;
+  bio: string;
+  /** El servidor la omite cuando el rol no la justifica. */
+  profesion?: string;
   created_at: string;
 }
 
