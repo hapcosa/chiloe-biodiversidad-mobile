@@ -1,8 +1,10 @@
 import {createBottomTabNavigator} from '@react-navigation/bottom-tabs';
+import {useIsFocused} from '@react-navigation/native';
 import React, {useEffect} from 'react';
 import {ActivityIndicator, StyleSheet, Text, View} from 'react-native';
 import {useAuth} from '../auth/AuthContext';
 import {BibliotecaScreen} from '../screens/BibliotecaScreen';
+import {CameraScreen} from '../screens/CameraScreen';
 import {GuardadosScreen} from '../screens/GuardadosScreen';
 import {HomeScreen} from '../screens/HomeScreen';
 import {LoginScreen} from '../screens/LoginScreen';
@@ -16,6 +18,7 @@ import {SpeciesStackNavigator} from './SpeciesStackNavigator';
 type RootTabParamList = {
   Home: undefined;
   Explorar: undefined;
+  Capturar: undefined;
   Comunidad: undefined;
   Guardados: undefined;
   Perfil: undefined;
@@ -24,6 +27,7 @@ type RootTabParamList = {
 const tabIcons: Record<keyof RootTabParamList, string> = {
   Home: '🏠',
   Explorar: '🔎',
+  Capturar: '📷',
   Comunidad: '👥',
   Guardados: '🔖',
   Perfil: '🙋',
@@ -40,6 +44,19 @@ const ExplorarStack = (): React.JSX.Element => (
 const GuardadosStack = (): React.JSX.Element => (
   <SpeciesStackNavigator ListaScreen={GuardadosScreen} />
 );
+
+// Acceso rápido al visor desde cualquier parte de la app. La foto queda en la
+// caché local; para asociarla a una especie se usa "Mi encuentro" en su ficha.
+//
+// Se desmonta al perder el foco: la pestaña no se descarga sola y dejaría la
+// cámara tomada, con lo que ninguna otra pantalla podría abrirla.
+const CapturarTab = (): React.JSX.Element => {
+  const isFocused = useIsFocused();
+  if (!isFocused) {
+    return <View style={styles.centered} />;
+  }
+  return <CameraScreen />;
+};
 
 interface TabBarIconProps {
   routeName: keyof RootTabParamList;
@@ -90,6 +107,11 @@ export const AppNavigator = (): React.JSX.Element => {
       })}>
       <Tab.Screen component={HomeStack} name="Home" />
       <Tab.Screen component={ExplorarStack} name="Explorar" />
+      <Tab.Screen
+        component={CapturarTab}
+        name="Capturar"
+        options={{tabBarLabel: 'Capturar'}}
+      />
       <Tab.Screen component={ComunidadStackNavigator} name="Comunidad" />
       <Tab.Screen component={GuardadosStack} name="Guardados" />
       <Tab.Screen component={PerfilStackNavigator} name="Perfil" />

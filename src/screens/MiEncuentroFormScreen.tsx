@@ -11,10 +11,11 @@ import {
 } from 'react-native';
 import {enqueueAvistamiento} from '../db/mutationQueue';
 import {markSpeciesViewed} from '../db/speciesViewed';
-import {openCamera} from '../native/ChiloeCamera';
+import type {CameraCapture} from '../native/ChiloeCamera';
 import {getCurrentLocation, type LocationResult} from '../native/location';
 import {syncPendingMutations} from '../sync/mutationSync';
 import {colors, spacing} from '../styles/theme';
+import {CameraScreen} from './CameraScreen';
 import type {Species} from '../types/domain';
 
 interface MiEncuentroFormScreenProps {
@@ -33,7 +34,7 @@ export const MiEncuentroFormScreen = ({
   const [locationError, setLocationError] = useState<string | null>(null);
   const [isLocating, setIsLocating] = useState(true);
   const [photoPath, setPhotoPath] = useState<string | null>(null);
-  const [isCapturing, setIsCapturing] = useState(false);
+  const [showCamera, setShowCamera] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
 
@@ -53,21 +54,11 @@ export const MiEncuentroFormScreen = ({
     void captureLocation();
   }, []);
 
-  const tomarFoto = async (): Promise<void> => {
-    setIsCapturing(true);
-    try {
-      const session = await openCamera({lens: 'back'});
-      try {
-        const result = await session.capture();
-        setPhotoPath(result.filePath);
-      } finally {
-        await session.close();
-      }
-    } catch (error) {
-      setSaveError(error instanceof Error ? error.message : 'No se pudo tomar la foto');
-    } finally {
-      setIsCapturing(false);
-    }
+  // Antes se abría la cámara y se disparaba a ciegas: la foto salía de lo que
+  // el sensor tuviera delante en ese instante. Ahora va por el visor.
+  const recibirFoto = (capture: CameraCapture): void => {
+    setPhotoPath(capture.filePath);
+    setShowCamera(false);
   };
 
   const guardar = async (): Promise<void> => {
@@ -107,6 +98,16 @@ export const MiEncuentroFormScreen = ({
       setIsSaving(false);
     }
   };
+
+  if (showCamera) {
+    return (
+      <CameraScreen
+        hint="Toca para enfocar y captura tu encuentro"
+        onBack={() => setShowCamera(false)}
+        onCapture={recibirFoto}
+      />
+    );
+  }
 
   return (
     <ScrollView contentContainerStyle={styles.container}>
@@ -164,14 +165,9 @@ export const MiEncuentroFormScreen = ({
         ) : (
           <Pressable
             accessibilityRole="button"
-            disabled={isCapturing}
-            onPress={tomarFoto}
-            style={[styles.secondaryButton, isCapturing && styles.disabled]}>
-            {isCapturing ? (
-              <ActivityIndicator color={colors.primary} />
-            ) : (
-              <Text style={styles.secondaryButtonText}>Tomar foto</Text>
-            )}
+            onPress={() => setShowCamera(true)}
+            style={styles.secondaryButton}>
+            <Text style={styles.secondaryButtonText}>Tomar foto</Text>
           </Pressable>
         )}
       </View>

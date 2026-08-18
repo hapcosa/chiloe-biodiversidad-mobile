@@ -7,11 +7,12 @@ import {getCachedSpecies, getLibraryStats} from '../db/speciesCache';
 import {listLocalAvistamientos} from '../db/mutationQueue';
 import {listSavedSpeciesIds} from '../db/savedSpecies';
 import {listViewedSpeciesIds} from '../db/speciesViewed';
-import {openCamera} from '../native/ChiloeCamera';
+import type {CameraCapture} from '../native/ChiloeCamera';
 import {uploadLocalPhotoPublicUrl} from '../native/photoUpload';
 import {shareEncuentroToStory} from '../native/socialShare';
 import {colors, spacing} from '../styles/theme';
 import {runInitialSpeciesSync} from '../sync/initialSync';
+import {CameraScreen} from './CameraScreen';
 import type {LocalAvistamiento} from '../types/avistamiento';
 
 interface PerfilScreenProps {
@@ -47,6 +48,7 @@ export const PerfilScreen = ({
   const [isSyncing, setIsSyncing] = useState(false);
   const [isUploadingAvatar, setIsUploadingAvatar] = useState(false);
   const [avatarError, setAvatarError] = useState<string | null>(null);
+  const [showAvatarCamera, setShowAvatarCamera] = useState(false);
   const [encuentros, setEncuentros] = useState<EncuentroConNombre[]>([]);
   const [sharingId, setSharingId] = useState<string | null>(null);
   const [socialSharingId, setSocialSharingId] = useState<string | null>(null);
@@ -150,22 +152,34 @@ export const PerfilScreen = ({
     }
   };
 
-  const pickAvatar = async (): Promise<void> => {
+  // Antes esto abría la frontal y disparaba a ciegas. Ahora pasa por el visor:
+  // el usuario ve qué está retratando y puede elegir una foto de la galería.
+  const subirAvatar = async (captured: CameraCapture): Promise<void> => {
+    setShowAvatarCamera(false);
     setAvatarError(null);
     setIsUploadingAvatar(true);
-    let session = null;
     try {
-      session = await openCamera({lens: 'front'});
-      const captured = await session.capture();
       const publicUrl = await uploadLocalPhotoPublicUrl(captured.filePath, 'perfiles-fotos');
       await updateAvatar(publicUrl);
     } catch (error) {
       setAvatarError(error instanceof Error ? error.message : 'No se pudo actualizar el avatar');
     } finally {
-      await session?.close();
       setIsUploadingAvatar(false);
     }
   };
+
+  if (showAvatarCamera) {
+    return (
+      <CameraScreen
+        hint="Encuadra tu retrato"
+        lens="front"
+        onBack={() => setShowAvatarCamera(false)}
+        onCapture={captured => {
+          void subirAvatar(captured);
+        }}
+      />
+    );
+  }
 
   const progresoPct =
     stats.totalEspecies > 0 ? Math.round((stats.descubiertas / stats.totalEspecies) * 100) : 0;
@@ -180,7 +194,7 @@ export const PerfilScreen = ({
         <Pressable
           accessibilityRole="button"
           disabled={isUploadingAvatar}
-          onPress={pickAvatar}
+          onPress={() => setShowAvatarCamera(true)}
           style={styles.avatar}>
           {isUploadingAvatar ? (
             <ActivityIndicator color={colors.surface} />
