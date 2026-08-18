@@ -1,8 +1,10 @@
 import {createBottomTabNavigator} from '@react-navigation/bottom-tabs';
 import {useIsFocused} from '@react-navigation/native';
-import React, {useEffect} from 'react';
+import React, {useCallback, useEffect, useState} from 'react';
 import {ActivityIndicator, StyleSheet, Text, View} from 'react-native';
 import {useAuth} from '../auth/AuthContext';
+import {haVistoBienvenida, marcarBienvenidaVista} from '../db/bienvenida';
+import {BienvenidaScreen} from '../screens/BienvenidaScreen';
 import {BibliotecaScreen} from '../screens/BibliotecaScreen';
 import {CameraScreen} from '../screens/CameraScreen';
 import {GuardadosScreen} from '../screens/GuardadosScreen';
@@ -70,6 +72,18 @@ const TabBarIcon = ({routeName, color, size}: TabBarIconProps): React.JSX.Elemen
 
 export const AppNavigator = (): React.JSX.Element => {
   const {isLoading, session} = useAuth();
+  // `null` mientras se consulta: mostrar los tabs y tapar después con la
+  // bienvenida daría un parpadeo justo en la pantalla que pide atención.
+  const [bienvenidaVista, setBienvenidaVista] = useState<boolean | null>(null);
+
+  useEffect(() => {
+    void haVistoBienvenida().then(setBienvenidaVista);
+  }, []);
+
+  const cerrarBienvenida = useCallback(() => {
+    setBienvenidaVista(true);
+    void marcarBienvenidaVista();
+  }, []);
 
   useEffect(() => {
     if (!session) {
@@ -81,13 +95,19 @@ export const AppNavigator = (): React.JSX.Element => {
     return startMutationSyncWorker();
   }, [session]);
 
-  if (isLoading) {
+  if (isLoading || bienvenidaVista === null) {
     return (
       <View style={styles.centered}>
         <ActivityIndicator color={colors.primary} />
         <Text style={styles.loadingText}>Cargando sesión...</Text>
       </View>
     );
+  }
+
+  // Antes del login: el criterio de uso vale igual para quien todavía no
+  // tiene cuenta.
+  if (!bienvenidaVista) {
+    return <BienvenidaScreen onContinue={cerrarBienvenida} />;
   }
 
   if (!session) {
