@@ -15,7 +15,6 @@ export interface FichaItem {
 
 export interface FichaSection {
   titulo: string;
-  emoji: string;
   items: FichaItem[];
   /** La comestibilidad de un hongo se destaca: es riesgo sanitario real. */
   destacada?: boolean;
@@ -26,7 +25,6 @@ type Ruta = string;
 
 interface Grupo {
   titulo: string;
-  emoji: string;
   rutas: Ruta[];
   destacada?: boolean;
 }
@@ -35,12 +33,10 @@ const GRUPOS: Record<Reino, Grupo[]> = {
   animalia: [
     {
       titulo: 'Alimentación',
-      emoji: '🍽️',
       rutas: ['alimentacion', 'dieta_detalle'],
     },
     {
       titulo: 'Comportamiento',
-      emoji: '🐾',
       rutas: [
         'comportamiento.actividad',
         'comportamiento.social',
@@ -49,19 +45,16 @@ const GRUPOS: Record<Reino, Grupo[]> = {
     },
     {
       titulo: 'Morfología',
-      emoji: '📏',
       rutas: ['clase', 'tamano_promedio_cm', 'peso_promedio_g'],
     },
     {
       titulo: 'Reproducción',
-      emoji: '🥚',
       rutas: ['reproduccion', 'epoca_reproductiva'],
     },
   ],
   plantae: [
     {
       titulo: 'Morfología',
-      emoji: '🌿',
       rutas: [
         'tipo_planta',
         'altura_promedio_m',
@@ -72,7 +65,6 @@ const GRUPOS: Record<Reino, Grupo[]> = {
     },
     {
       titulo: 'Floración y fruto',
-      emoji: '🌸',
       rutas: [
         'floracion_meses',
         'polinizacion',
@@ -80,45 +72,39 @@ const GRUPOS: Record<Reino, Grupo[]> = {
         'fruto.comestible',
       ],
     },
-    {titulo: 'Usos tradicionales', emoji: '🪵', rutas: ['usos_tradicionales']},
+    {titulo: 'Usos tradicionales', rutas: ['usos_tradicionales']},
   ],
   fungi: [
     {
       titulo: 'Comestibilidad',
-      emoji: '⚠️',
       rutas: ['comestibilidad', 'advertencia'],
       destacada: true,
     },
     {
       titulo: 'Biología',
-      emoji: '🍄',
       rutas: ['tipo', 'simbiosis', 'tipo_himenio'],
     },
-    {titulo: 'Dónde y cuándo', emoji: '🌲', rutas: ['sustrato', 'temporada']},
+    {titulo: 'Dónde y cuándo', rutas: ['sustrato', 'temporada']},
   ],
   protista: [
     {
       titulo: 'Biología',
-      emoji: '🔬',
       rutas: ['grupo', 'morfologia', 'tamano_promedio_mm'],
     },
-    {titulo: 'Ambiente', emoji: '🌊', rutas: ['ambiente']},
+    {titulo: 'Ambiente', rutas: ['ambiente']},
     {
       titulo: 'Importancia ecológica',
-      emoji: '🌐',
       rutas: ['importancia_ecologica'],
     },
   ],
   monera: [
-    {titulo: 'Biología', emoji: '🔬', rutas: ['dominio', 'forma', 'gram']},
+    {titulo: 'Biología', rutas: ['dominio', 'forma', 'gram']},
     {
       titulo: 'Metabolismo',
-      emoji: '⚗️',
       rutas: ['metabolismo.fuente_energia', 'metabolismo.oxigeno'],
     },
     {
       titulo: 'Relevancia en Chiloé',
-      emoji: '📍',
       rutas: ['relevancia_chiloe'],
     },
   ],
@@ -390,7 +376,6 @@ export function construirFicha(species: Species): FichaSection[] {
     }
     return {
       titulo: grupo.titulo,
-      emoji: grupo.emoji,
       items,
       destacada: grupo.destacada,
     };
@@ -410,7 +395,6 @@ export function construirFicha(species: Species): FichaSection[] {
   if (otros.length > 0) {
     secciones.push({
       titulo: 'Otros datos',
-      emoji: '📋',
       items: otros,
       destacada: false,
     });

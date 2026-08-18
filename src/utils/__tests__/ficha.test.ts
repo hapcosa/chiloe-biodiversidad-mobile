@@ -116,6 +116,24 @@ describe('construirFicha', () => {
     ]);
   });
 
+  it('no devuelve emojis en ningún reino', () => {
+    const porReino: {[key in Reino]: {[key: string]: JsonValue}} = {
+      animalia: {clase: 'Aves', alimentacion: 'nectarivoro'},
+      plantae: {tipo_planta: 'arbol', usos_tradicionales: ['medicinal']},
+      fungi: {comestibilidad: 'mortal', tipo: 'levadura', sustrato: ['suelo']},
+      protista: {grupo: 'diatomeas', ambiente: 'marino'},
+      monera: {dominio: 'bacteria', patogenicidad: 'oportunista'},
+    };
+    // \p{Extended_Pictographic} cubre los pictogramas que traía la ficha (🍽️, ⚠️, 🍄…).
+    const pictograma = /\p{Extended_Pictographic}/u;
+
+    for (const [reino, atributos] of Object.entries(porReino)) {
+      const ficha = construirFicha(especie(reino as Reino, atributos));
+      expect(ficha.length).toBeGreaterThan(0);
+      expect(JSON.stringify(ficha)).not.toMatch(pictograma);
+    }
+  });
+
   it('devuelve una ficha vacía si no hay atributos', () => {
     expect(construirFicha(especie('protista', {}))).toEqual([]);
   });
