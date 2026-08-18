@@ -62,13 +62,29 @@ class ChiloeCameraPreviewView(context: Context) :
             return
         }
 
+        // El tamaño del buffer se fija desde el SurfaceTexture y *antes* de
+        // envolverlo en un Surface: es la receta de Camera2Basic y la única que
+        // manda de verdad. `ANativeWindow_setBuffersGeometry` desde el nativo
+        // se ignora cuando el consumidor es un SurfaceTexture, y el productor
+        // terminaba entregando un campo de visión casi cuadrado (aspecto 0.974)
+        // sin importar qué stream se pidiera: de ahí la deformación del preview.
+        val geometry = module.sensorGeometry(sessionId)
+        if (geometry != null && geometry.previewWidth > 0 && geometry.previewHeight > 0) {
+            texture.setDefaultBufferSize(geometry.previewWidth, geometry.previewHeight)
+            Log.d(
+                TAG,
+                "attachIfReady: setDefaultBufferSize " +
+                    "${geometry.previewWidth}x${geometry.previewHeight}",
+            )
+        } else {
+            Log.w(TAG, "attachIfReady: sin geometría de preview; buffer sin fijar")
+        }
+
         val surface = Surface(texture)
         attachedSurface = surface
         try {
             module.attachPreviewSurface(sessionId, surface)
             Log.d(TAG, "attachIfReady: attachPreviewSurface OK sessionId=$sessionId")
-            // El tamaño del stream de preview solo se conoce tras adjuntar la
-            // superficie, así que la transformación se calcula aquí.
             applyPreviewTransform()
         } catch (error: Exception) {
             Log.e(TAG, "attachIfReady: attachPreviewSurface failed sessionId=$sessionId", error)
