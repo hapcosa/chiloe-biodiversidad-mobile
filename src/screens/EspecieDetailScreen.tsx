@@ -171,8 +171,10 @@ export const EspecieDetailScreen = ({
             <View
               key={seccion.titulo}
               style={[styles.fichaSection, seccion.destacada && styles.fichaSectionDestacada]}>
+              {/* La comestibilidad de un hongo conserva su marca: riesgo sanitario real. */}
               <Text style={styles.fichaSectionTitle}>
-                {seccion.emoji} {seccion.titulo}
+                {seccion.destacada ? '⚠️ ' : ''}
+                {seccion.titulo}
               </Text>
               {seccion.items.map(item => (
                 <View key={item.label} style={styles.fichaItem}>
@@ -354,9 +356,11 @@ const styles = StyleSheet.create({
   },
   fichaSectionTitle: {
     color: colors.text,
-    fontSize: 15,
+    fontSize: 13,
     fontWeight: '800',
+    letterSpacing: 0.8,
     marginBottom: spacing.sm,
+    textTransform: 'uppercase',
   },
   fichaItem: {
     marginBottom: spacing.sm,
