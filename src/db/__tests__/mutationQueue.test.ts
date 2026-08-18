@@ -32,6 +32,7 @@ const draft: AvistamientoDraft = {
   geo_lat: -42.48,
   geo_lng: -73.76,
   precision_metros: 12,
+  precision_declarada: 'exacto',
   observado_en: '2026-07-16T12:00:00.000Z',
 };
 

@@ -1,5 +1,5 @@
 import {open} from 'react-native-quick-sqlite';
-import {schemaStatements} from './schema';
+import {alterStatements, schemaStatements} from './schema';
 
 type SqlValue = string | number | null;
 
@@ -45,6 +45,14 @@ export const querySql = async <T>(
 export const initializeDatabase = async (): Promise<void> => {
   for (const statement of schemaStatements) {
     await executeSql(statement);
+  }
+  for (const statement of alterStatements) {
+    try {
+      await executeSql(statement);
+    } catch {
+      // Ya aplicada: SQLite no sabe decir "ADD COLUMN IF NOT EXISTS" y falla
+      // con "duplicate column name". Ver alterStatements en schema.ts.
+    }
   }
 };
 

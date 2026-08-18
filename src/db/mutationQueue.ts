@@ -57,6 +57,7 @@ interface LocalAvistamientoRow {
   geo_lat: number;
   geo_lng: number;
   precision_metros: number | null;
+  precision_declarada: LocalAvistamiento['precision_declarada'];
   observado_en: string;
   estado: LocalAvistamiento['estado'];
   sync_status: MutationStatus;
@@ -113,6 +114,9 @@ const rowToLocalAvistamiento =(row: LocalAvistamientoRow): LocalAvistamiento => 
   geo_lat: row.geo_lat,
   geo_lng: row.geo_lng,
   precision_metros: row.precision_metros,
+  // Las filas guardadas antes de la migración no la traen: son encuentros
+  // registrados con el GPS en vivo, que es justo lo que 'exacto' significa.
+  precision_declarada: row.precision_declarada ?? 'exacto',
   observado_en: row.observado_en,
   estado: row.estado,
   sync_status: row.sync_status,
@@ -141,8 +145,9 @@ export const enqueueAvistamiento = async (
     `INSERT INTO local_avistamientos (
       local_id, remote_id, especie_id, reino, nombre_sugerido, descripcion,
       foto_key, local_photo_path, geo_lat, geo_lng, precision_metros,
-      observado_en, estado, sync_status, created_at, updated_at
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      precision_declarada, observado_en, estado, sync_status, created_at,
+      updated_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       localAvistamiento.local_id,
       localAvistamiento.remote_id ?? null,
@@ -155,6 +160,7 @@ export const enqueueAvistamiento = async (
       localAvistamiento.geo_lat,
       localAvistamiento.geo_lng,
       localAvistamiento.precision_metros ?? null,
+      localAvistamiento.precision_declarada,
       localAvistamiento.observado_en,
       localAvistamiento.estado,
       localAvistamiento.sync_status,

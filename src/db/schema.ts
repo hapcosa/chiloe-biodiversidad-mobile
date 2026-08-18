@@ -44,6 +44,7 @@ export const schemaStatements = [
     geo_lat REAL NOT NULL,
     geo_lng REAL NOT NULL,
     precision_metros REAL,
+    precision_declarada TEXT NOT NULL DEFAULT 'exacto',
     observado_en TEXT NOT NULL,
     estado TEXT NOT NULL,
     sync_status TEXT NOT NULL,
@@ -70,4 +71,11 @@ export const schemaStatements = [
     especie_id INTEGER PRIMARY KEY,
     guardado_en TEXT NOT NULL
   )`,
+];
+
+// Columnas añadidas a tablas que ya existen en teléfonos con la app instalada.
+// SQLite no admite `ADD COLUMN IF NOT EXISTS`, así que el error de columna
+// duplicada se ignora: es la señal de que la migración ya corrió.
+export const alterStatements = [
+  "ALTER TABLE local_avistamientos ADD COLUMN precision_declarada TEXT NOT NULL DEFAULT 'exacto'",
 ];
