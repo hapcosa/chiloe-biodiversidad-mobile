@@ -20,6 +20,7 @@
     "react": "^19.2.3",
     "react-native": "0.86.0",
     "react-native-keychain": "latest",
+    "react-native-maps": "^1.29.0",
     "react-native-quick-sqlite": "latest",
     "react-native-safe-area-context": "^5.8.0",
     "react-native-screens": "^4.26.2"
