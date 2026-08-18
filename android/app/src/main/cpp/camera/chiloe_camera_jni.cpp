@@ -13,7 +13,11 @@
 namespace {
 
 std::mutex sessionsMutex;
-std::unordered_map<int, std::unique_ptr<chiloe::camera::CameraSession>> sessions;
+// shared_ptr y no unique_ptr: `getSession` suelta el mutex antes de que el
+// llamador use la sesión, así que hay que mantenerla viva mientras dure la
+// llamada. Con unique_ptr, un `nativeClose` concurrente la destruía y el otro
+// hilo quedaba con una referencia colgando.
+std::unordered_map<int, std::shared_ptr<chiloe::camera::CameraSession>> sessions;
 std::atomic<int> nextSessionId{1};
 
 std::string toString(JNIEnv* env, jstring value) {
@@ -26,13 +30,21 @@ std::string toString(JNIEnv* env, jstring value) {
     return result;
 }
 
-chiloe::camera::CameraSession& getSession(int sessionId) {
+std::shared_ptr<chiloe::camera::CameraSession> findSession(int sessionId) {
     std::lock_guard<std::mutex> lock(sessionsMutex);
     const auto it = sessions.find(sessionId);
-    if (it == sessions.end() || !it->second) {
+    if (it == sessions.end()) {
+        return nullptr;
+    }
+    return it->second;
+}
+
+std::shared_ptr<chiloe::camera::CameraSession> getSession(int sessionId) {
+    auto session = findSession(sessionId);
+    if (!session) {
         throw std::runtime_error("camera session not found");
     }
-    return *it->second;
+    return session;
 }
 
 void throwJava(JNIEnv* env, const std::exception& error) {
@@ -68,7 +80,7 @@ Java_cl_chiloe_biodiversidad_camera_ChiloeCameraModule_nativeSetIso(
     jint sessionId,
     jint iso) {
     try {
-        getSession(sessionId).setIso(iso);
+        getSession(sessionId)->setIso(iso);
     } catch (const std::exception& error) {
         throwJava(env, error);
     }
@@ -81,7 +93,7 @@ Java_cl_chiloe_biodiversidad_camera_ChiloeCameraModule_nativeSetExposureMs(
     jint sessionId,
     jdouble exposureMs) {
     try {
-        getSession(sessionId).setExposureMs(exposureMs);
+        getSession(sessionId)->setExposureMs(exposureMs);
     } catch (const std::exception& error) {
         throwJava(env, error);
     }
@@ -94,7 +106,7 @@ Java_cl_chiloe_biodiversidad_camera_ChiloeCameraModule_nativeSetFocusDistance(
     jint sessionId,
     jfloat distance) {
     try {
-        getSession(sessionId).setFocusDistance(distance);
+        getSession(sessionId)->setFocusDistance(distance);
     } catch (const std::exception& error) {
         throwJava(env, error);
     }
@@ -106,7 +118,7 @@ Java_cl_chiloe_biodiversidad_camera_ChiloeCameraModule_nativeSetAutoFocus(
     jobject,
     jint sessionId) {
     try {
-        getSession(sessionId).setAutoFocus();
+        getSession(sessionId)->setAutoFocus();
     } catch (const std::exception& error) {
         throwJava(env, error);
     }
@@ -120,9 +132,9 @@ Java_cl_chiloe_biodiversidad_camera_ChiloeCameraModule_nativeCaptureJpeg(
     jstring outputPath,
     jint deviceOrientation) {
     try {
-        auto& session = getSession(sessionId);
-        session.setDeviceOrientation(deviceOrientation);
-        const auto result = session.captureJpeg(toString(env, outputPath));
+        const auto session = getSession(sessionId);
+        session->setDeviceOrientation(deviceOrientation);
+        const auto result = session->captureJpeg(toString(env, outputPath));
         jint values[] = {result.width, result.height};
         jintArray array = env->NewIntArray(2);
         env->SetIntArrayRegion(array, 0, 2, values);
@@ -141,7 +153,7 @@ Java_cl_chiloe_biodiversidad_camera_ChiloeCameraModule_nativeGetSensorGeometry(
     jobject,
     jint sessionId) {
     try {
-        const auto geometry = getSession(sessionId).sensorGeometry();
+        const auto geometry = getSession(sessionId)->sensorGeometry();
         jint values[] = {
             geometry.orientationDegrees,
             geometry.frontFacing ? 1 : 0,
@@ -168,7 +180,7 @@ Java_cl_chiloe_biodiversidad_camera_ChiloeCameraModule_nativeSetPreviewSurface(
         if (window == nullptr) {
             throw std::runtime_error("invalid preview surface");
         }
-        getSession(sessionId).setPreviewSurface(window);
+        getSession(sessionId)->setPreviewSurface(window);
     } catch (const std::exception& error) {
         throwJava(env, error);
     }
@@ -180,7 +192,12 @@ Java_cl_chiloe_biodiversidad_camera_ChiloeCameraModule_nativeClearPreviewSurface
     jobject,
     jint sessionId) {
     try {
-        getSession(sessionId).clearPreviewSurface();
+        // Soltar el preview de una sesión que ya no existe no es un error: al
+        // salir de la pantalla, JS cierra la sesión y el SurfaceTexture se
+        // destruye después. Lanzar aquí mataba la app al apretar "Volver".
+        if (const auto session = findSession(sessionId)) {
+            session->clearPreviewSurface();
+        }
     } catch (const std::exception& error) {
         throwJava(env, error);
     }
@@ -192,7 +209,7 @@ Java_cl_chiloe_biodiversidad_camera_ChiloeCameraModule_nativeClose(
     jobject,
     jint sessionId) {
     try {
-        std::unique_ptr<chiloe::camera::CameraSession> session;
+        std::shared_ptr<chiloe::camera::CameraSession> session;
         {
             std::lock_guard<std::mutex> lock(sessionsMutex);
             const auto it = sessions.find(sessionId);

@@ -62,13 +62,29 @@ class ChiloeCameraPreviewView(context: Context) :
             return
         }
 
+        // El tamaño del buffer se fija desde el SurfaceTexture y *antes* de
+        // envolverlo en un Surface: es la receta de Camera2Basic y la única que
+        // manda de verdad. `ANativeWindow_setBuffersGeometry` desde el nativo
+        // se ignora cuando el consumidor es un SurfaceTexture, y el productor
+        // terminaba entregando un campo de visión casi cuadrado (aspecto 0.974)
+        // sin importar qué stream se pidiera: de ahí la deformación del preview.
+        val geometry = module.sensorGeometry(sessionId)
+        if (geometry != null && geometry.previewWidth > 0 && geometry.previewHeight > 0) {
+            texture.setDefaultBufferSize(geometry.previewWidth, geometry.previewHeight)
+            Log.d(
+                TAG,
+                "attachIfReady: setDefaultBufferSize " +
+                    "${geometry.previewWidth}x${geometry.previewHeight}",
+            )
+        } else {
+            Log.w(TAG, "attachIfReady: sin geometría de preview; buffer sin fijar")
+        }
+
         val surface = Surface(texture)
         attachedSurface = surface
         try {
             module.attachPreviewSurface(sessionId, surface)
             Log.d(TAG, "attachIfReady: attachPreviewSurface OK sessionId=$sessionId")
-            // El tamaño del stream de preview solo se conoce tras adjuntar la
-            // superficie, así que la transformación se calcula aquí.
             applyPreviewTransform()
         } catch (error: Exception) {
             Log.e(TAG, "attachIfReady: attachPreviewSurface failed sessionId=$sessionId", error)
@@ -84,33 +100,47 @@ class ChiloeCameraPreviewView(context: Context) :
             return
         }
 
-        val deviceOrientation = cameraModule()?.deviceOrientationDegrees() ?: 0
-        val rotation = if (geometry.frontFacing) {
-            ((geometry.orientationDegrees - deviceOrientation) % 360 + 360) % 360
-        } else {
-            (geometry.orientationDegrees + deviceOrientation) % 360
-        }
+        // Solo se compensa cuánto está girada la *pantalla* respecto de su
+        // orientación natural; el `sensorOrientation` NO entra en la cuenta.
+        // Es lo mismo que hace el ejemplo oficial Camera2Basic, que en
+        // ROTATION_0 no aplica transformación alguna: en la orientación natural
+        // el sensor ya queda derecho en pantalla. Sumar `sensorOrientation`
+        // aquí dejaba la escena de lado.
+        val displayRotation = cameraModule()?.displayRotationDegrees() ?: 0
+        val rotation = (360 - displayRotation) % 360
 
+        // Dimensiones del contenido tal como llega ya girado por el sensor.
+        val sensorQuarterTurn =
+            geometry.orientationDegrees == 90 || geometry.orientationDegrees == 270
+        val baseWidth = if (sensorQuarterTurn) geometry.previewHeight else geometry.previewWidth
+        val baseHeight = if (sensorQuarterTurn) geometry.previewWidth else geometry.previewHeight
+
+        // Tamaño con el que termina *dibujado* tras compensar la pantalla.
         val quarterTurn = rotation == 90 || rotation == 270
-        val contentWidth = if (quarterTurn) geometry.previewHeight else geometry.previewWidth
-        val contentHeight = if (quarterTurn) geometry.previewWidth else geometry.previewHeight
+        val shownWidth = if (quarterTurn) baseHeight else baseWidth
+        val shownHeight = if (quarterTurn) baseWidth else baseHeight
 
         val viewRect = RectF(0f, 0f, width.toFloat(), height.toFloat())
         val centerX = viewRect.centerX()
         val centerY = viewRect.centerY()
 
-        // La vista dibuja el buffer estirado a sus bordes; el primer paso lo
-        // devuelve a su relación de aspecto real, centrado.
-        val contentRect = RectF(0f, 0f, contentWidth.toFloat(), contentHeight.toFloat())
+        // La vista dibuja el contenido estirado a sus bordes; el primer paso lo
+        // devuelve a su relación de aspecto real, centrado. Van las dimensiones
+        // de *antes* de la rotación de pantalla: el intercambio que esa
+        // rotación provoca lo hace después `postRotate`, y aplicarlo también
+        // aquí deformaba la imagen y la dejaba como una franja apaisada con
+        // bandas negras arriba y abajo.
+        val contentRect = RectF(0f, 0f, baseWidth.toFloat(), baseHeight.toFloat())
         contentRect.offset(centerX - contentRect.centerX(), centerY - contentRect.centerY())
 
         val matrix = Matrix()
         matrix.setRectToRect(viewRect, contentRect, Matrix.ScaleToFit.FILL)
 
-        // Recorte centrado: se agranda hasta cubrir la vista sin deformar.
+        // Recorte centrado: se agranda hasta cubrir la vista sin deformar. Se
+        // mide contra el tamaño ya girado, que es el que ocupa la pantalla.
         val scale = max(
-            viewRect.width() / contentWidth.toFloat(),
-            viewRect.height() / contentHeight.toFloat(),
+            viewRect.width() / shownWidth.toFloat(),
+            viewRect.height() / shownHeight.toFloat(),
         )
         matrix.postScale(scale, scale, centerX, centerY)
         matrix.postRotate(rotation.toFloat(), centerX, centerY)
@@ -118,8 +148,8 @@ class ChiloeCameraPreviewView(context: Context) :
         Log.d(
             TAG,
             "applyPreviewTransform: buffer=${geometry.previewWidth}x${geometry.previewHeight} " +
-                "sensor=${geometry.orientationDegrees} device=$deviceOrientation rotation=$rotation " +
-                "view=${width}x$height",
+                "base=${baseWidth}x$baseHeight sensor=${geometry.orientationDegrees} " +
+                "display=$displayRotation rotation=$rotation view=${width}x$height",
         )
         setTransform(matrix)
     }
@@ -127,10 +157,18 @@ class ChiloeCameraPreviewView(context: Context) :
     private fun detach() {
         val surface = attachedSurface ?: return
         attachedSurface = null
-        if (sessionId >= 0) {
-            cameraModule()?.detachPreviewSurface(sessionId)
+        // Corre en el hilo de UI desde onSurfaceTextureDestroyed: cualquier
+        // excepción que escape de aquí cierra la app. Y el Surface se libera
+        // pase lo que pase, o se fuga el buffer.
+        try {
+            if (sessionId >= 0) {
+                cameraModule()?.detachPreviewSurface(sessionId)
+            }
+        } catch (error: Exception) {
+            Log.w(TAG, "detach: detachPreviewSurface failed sessionId=$sessionId", error)
+        } finally {
+            surface.release()
         }
-        surface.release()
     }
 
     // getNativeModule(Class) devuelve null en silencio bajo la Nueva
