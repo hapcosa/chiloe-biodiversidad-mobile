@@ -9,6 +9,7 @@
 #include <media/NdkImageReader.h>
 
 #include <algorithm>
+#include <cmath>
 #include <chrono>
 #include <condition_variable>
 #include <cstdint>
@@ -199,12 +200,15 @@ void readSensorCharacteristics(
 
 // Elige el stream más grande disponible para `format` que no exceda
 // maxWidth/maxHeight (usar límites de int para "sin tope", como en JPEG).
+// Con `aspect` > 0 se descartan los tamaños cuya relación de aspecto no
+// coincida: es lo que mantiene el preview y la foto encuadrando lo mismo.
 Size chooseStreamSize(
     ACameraManager* manager,
     const std::string& cameraId,
     int32_t format,
     int maxWidth,
-    int maxHeight) {
+    int maxHeight,
+    double aspect = 0.0) {
     ACameraMetadata* metadata = nullptr;
     if (ACameraManager_getCameraCharacteristics(manager, cameraId.c_str(), &metadata) != ACAMERA_OK) {
         return {};
@@ -227,11 +231,18 @@ Size chooseStreamSize(
             const int32_t input = entry.data.i32[index + 3];
             const long area = static_cast<long>(width) * static_cast<long>(height);
 
-            if (streamFormat == format && input == 0 && width <= maxWidth && height <= maxHeight &&
-                area > selectedArea) {
-                selected = {width, height};
-                selectedArea = area;
+            if (streamFormat != format || input != 0 || width > maxWidth || height > maxHeight ||
+                area <= selectedArea) {
+                continue;
             }
+            if (aspect > 0.0 && height > 0) {
+                const double candidate = static_cast<double>(width) / static_cast<double>(height);
+                if (std::abs(candidate - aspect) > 0.02) {
+                    continue;
+                }
+            }
+            selected = {width, height};
+            selectedArea = area;
         }
     }
 
@@ -256,6 +267,7 @@ struct CameraSession::Impl {
     bool frontFacing = false;
     int deviceOrientationDegrees = 0;
     Size previewSize;
+    Size jpegSize;
 
     // Fórmula de la documentación de CaptureRequest#JPEG_ORIENTATION: la
     // rotación del dispositivo se invierte en cámaras frontales porque su
@@ -409,6 +421,25 @@ void CameraSession::open() {
     const auto jpegSize = chooseStreamSize(
         impl_->manager, impl_->cameraId, AIMAGE_FORMAT_JPEG,
         std::numeric_limits<int>::max(), std::numeric_limits<int>::max());
+    impl_->jpegSize = jpegSize;
+
+    // El tamaño del preview se resuelve acá, al abrir, y no al recibir la
+    // superficie: la vista necesita conocerlo *antes* de crear el Surface para
+    // fijar el tamaño del buffer del SurfaceTexture, que es quien manda.
+    const double jpegAspect =
+        jpegSize.height > 0
+            ? static_cast<double>(jpegSize.width) / static_cast<double>(jpegSize.height)
+            : 0.0;
+    impl_->previewSize = chooseStreamSize(
+        impl_->manager, impl_->cameraId, AIMAGE_FORMAT_PRIVATE, MaxPreviewWidth, MaxPreviewHeight,
+        jpegAspect);
+    if (impl_->previewSize.width == 0 || impl_->previewSize.height == 0) {
+        // Ninguna resolución de preview comparte el aspecto de la foto: mejor un
+        // preview con distinto encuadre que ninguno.
+        impl_->previewSize = chooseStreamSize(
+            impl_->manager, impl_->cameraId, AIMAGE_FORMAT_PRIVATE, MaxPreviewWidth, MaxPreviewHeight);
+    }
+
     checkMedia(
         AImageReader_new(jpegSize.width, jpegSize.height, AIMAGE_FORMAT_JPEG, 1, &impl_->jpegReader),
         "failed to create image reader");
@@ -505,12 +536,12 @@ void CameraSession::setPreviewSurface(ANativeWindow* window) {
         impl_->previewOutput = nullptr;
     }
 
-    const auto previewSize = chooseStreamSize(
-        impl_->manager, impl_->cameraId, AIMAGE_FORMAT_PRIVATE, MaxPreviewWidth, MaxPreviewHeight);
-    // Lo consulta la vista de preview para calcular su matriz de transformación:
-    // el buffer llega en orientación de sensor (apaisado) y hay que rotarlo y
-    // escalarlo para que llene una vista vertical sin deformarse.
-    impl_->previewSize = previewSize;
+    // Ya resuelto en open(); acá solo se usa. Quien fija el tamaño del buffer
+    // es la vista, con `SurfaceTexture.setDefaultBufferSize` antes de crear el
+    // Surface: `ANativeWindow_setBuffersGeometry` desde acá no tiene efecto
+    // cuando el consumidor es un SurfaceTexture y el productor entregaba un
+    // campo de visión casi cuadrado, deformando el preview.
+    const auto previewSize = impl_->previewSize;
     __android_log_print(
         ANDROID_LOG_DEBUG,
         LogTag,
@@ -519,12 +550,6 @@ void CameraSession::setPreviewSurface(ANativeWindow* window) {
         previewSize.height,
         Size{}.width,
         Size{}.height);
-    const auto geometryResult =
-        ANativeWindow_setBuffersGeometry(window, previewSize.width, previewSize.height, 0);
-    if (geometryResult != 0) {
-        __android_log_print(
-            ANDROID_LOG_ERROR, LogTag, "ANativeWindow_setBuffersGeometry failed: %d", geometryResult);
-    }
 
     impl_->previewWindow = window;
     checkCamera(
