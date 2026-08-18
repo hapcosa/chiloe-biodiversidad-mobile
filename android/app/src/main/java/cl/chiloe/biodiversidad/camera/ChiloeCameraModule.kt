@@ -1,11 +1,17 @@
 package cl.chiloe.biodiversidad.camera
 
 import android.Manifest
+import android.app.Activity
+import android.content.Intent
 import android.content.pm.PackageManager
+import android.graphics.BitmapFactory
+import android.net.Uri
 import android.os.Build
 import android.view.Surface
 import android.view.WindowManager
+import com.facebook.react.bridge.ActivityEventListener
 import com.facebook.react.bridge.Arguments
+import com.facebook.react.bridge.BaseActivityEventListener
 import com.facebook.react.bridge.Promise
 import com.facebook.react.bridge.ReactApplicationContext
 import com.facebook.react.bridge.ReactContextBaseJavaModule
@@ -27,9 +33,57 @@ class ChiloeCameraModule(
         init {
             System.loadLibrary("chiloe_camera")
         }
+
+        private const val REQUEST_PICK_IMAGE = 0x43484C // "CHL"
+    }
+
+    private var pendingGalleryPromise: Promise? = null
+
+    private val activityEventListener: ActivityEventListener =
+        object : BaseActivityEventListener() {
+            override fun onActivityResult(
+                activity: Activity,
+                requestCode: Int,
+                resultCode: Int,
+                data: Intent?,
+            ) {
+                if (requestCode != REQUEST_PICK_IMAGE) {
+                    return
+                }
+                val promise = pendingGalleryPromise ?: return
+                pendingGalleryPromise = null
+
+                if (resultCode != Activity.RESULT_OK) {
+                    // Cancelar no es un error: JS distingue por el null.
+                    promise.resolve(null)
+                    return
+                }
+
+                val uri = data?.data
+                if (uri == null) {
+                    promise.resolve(null)
+                    return
+                }
+
+                try {
+                    promise.resolve(copyGalleryImage(uri))
+                } catch (error: Throwable) {
+                    promise.reject("gallery_copy_failed", error)
+                }
+            }
+        }
+
+    init {
+        reactContext.addActivityEventListener(activityEventListener)
     }
 
     override fun getName(): String = "ChiloeCamera"
+
+    override fun invalidate() {
+        reactContext.removeActivityEventListener(activityEventListener)
+        pendingGalleryPromise = null
+        super.invalidate()
+    }
 
     @ReactMethod
     fun openCamera(options: ReadableMap, promise: Promise) {
@@ -97,6 +151,127 @@ class ChiloeCameraModule(
         } catch (error: Throwable) {
             promise.reject("camera_capture_failed", error)
         }
+    }
+
+    // Rangos reales del sensor. Sin esto la UI de controles manuales no puede
+    // ofrecer nada: los valores fuera de rango los ignora el driver en silencio.
+    @ReactMethod
+    fun capabilities(sessionId: Int, promise: Promise) {
+        try {
+            val ints = nativeGetCapabilitiesInt(sessionId)
+            val doubles = nativeGetCapabilitiesDouble(sessionId)
+            if (ints.size < 6 || doubles.size < 3) {
+                promise.reject("camera_capabilities_failed", "respuesta nativa incompleta")
+                return
+            }
+
+            val result = Arguments.createMap()
+            result.putInt("isoMin", ints[0])
+            result.putInt("isoMax", ints[1])
+            result.putInt("maxAfRegions", ints[2])
+            result.putBoolean("supportsManualSensor", ints[3] == 1)
+            result.putInt("previewWidth", ints[4])
+            result.putInt("previewHeight", ints[5])
+            result.putDouble("exposureMinMs", doubles[0])
+            result.putDouble("exposureMaxMs", doubles[1])
+            result.putDouble("focusMaxDiopters", doubles[2])
+            promise.resolve(result)
+        } catch (error: Throwable) {
+            promise.reject("camera_capabilities_failed", error)
+        }
+    }
+
+    // Lo que JS necesita para convertir un toque en coordenadas de la imagen.
+    // La rotación de pantalla se lee aquí y no en JS porque `Dimensions` no la
+    // expone y la activity no está fijada a vertical.
+    @ReactMethod
+    fun previewLayout(sessionId: Int, promise: Promise) {
+        val geometry = sensorGeometry(sessionId)
+        if (geometry == null) {
+            promise.reject("camera_layout_failed", "sesión de cámara sin geometría")
+            return
+        }
+
+        val result = Arguments.createMap()
+        result.putInt("bufferWidth", geometry.previewWidth)
+        result.putInt("bufferHeight", geometry.previewHeight)
+        result.putInt("sensorOrientation", geometry.orientationDegrees)
+        result.putInt("displayRotation", displayRotationDegrees())
+        promise.resolve(result)
+    }
+
+    // (x, y) normalizados 0..1 sobre la imagen tal como se ve, sin el recorte
+    // de la vista: la conversión desde el toque la hace JS, que es quien conoce
+    // el tamaño de la vista.
+    @ReactMethod
+    fun focusAt(sessionId: Int, x: Double, y: Double, promise: Promise) {
+        try {
+            nativeFocusAt(sessionId, x.toFloat(), y.toFloat())
+            promise.resolve(null)
+        } catch (error: Throwable) {
+            promise.reject("camera_focus_at_failed", error)
+        }
+    }
+
+    // ACTION_GET_CONTENT en vez de una dependencia npm de galería: no necesita
+    // permiso de almacenamiento (el usuario elige el archivo y el sistema nos
+    // da acceso solo a ese) y no agrega superficie de terceros.
+    @ReactMethod
+    fun pickImageFromGallery(promise: Promise) {
+        val activity = reactContext.currentActivity
+        if (activity == null) {
+            promise.reject("gallery_no_activity", "No hay actividad para abrir la galería")
+            return
+        }
+        if (pendingGalleryPromise != null) {
+            promise.reject("gallery_busy", "Ya hay una selección de imagen en curso")
+            return
+        }
+
+        val intent =
+            Intent(Intent.ACTION_GET_CONTENT).apply {
+                type = "image/*"
+                addCategory(Intent.CATEGORY_OPENABLE)
+            }
+
+        pendingGalleryPromise = promise
+        try {
+            // Vía el ReactContext y no la Activity: es quien enruta el
+            // resultado de vuelta a los ActivityEventListener registrados.
+            reactContext.startActivityForResult(
+                Intent.createChooser(intent, "Elegir imagen"),
+                REQUEST_PICK_IMAGE,
+                null,
+            )
+        } catch (error: Throwable) {
+            pendingGalleryPromise = null
+            promise.reject("gallery_open_failed", error)
+        }
+    }
+
+    private fun copyGalleryImage(uri: Uri): com.facebook.react.bridge.WritableMap {
+        val outputDir = File(reactContext.cacheDir, "captures").apply { mkdirs() }
+        val output = File(outputDir, "galeria-${System.currentTimeMillis()}.jpg")
+
+        reactContext.contentResolver.openInputStream(uri).use { input ->
+            if (input == null) {
+                throw IllegalStateException("No se pudo leer la imagen elegida")
+            }
+            output.outputStream().use { input.copyTo(it) }
+        }
+
+        // La foto viene de otra app y trae el EXIF entero, GPS incluido: mismo
+        // saneado que las capturas propias.
+        nativeStripSensitiveExif(output.absolutePath)
+
+        val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+        BitmapFactory.decodeFile(output.absolutePath, bounds)
+
+        val result = Arguments.createMap()
+        result.putString("filePath", output.absolutePath)
+        result.putInt("width", bounds.outWidth.coerceAtLeast(0))
+        result.putInt("height", bounds.outHeight.coerceAtLeast(0))
+        return result
     }
 
     @ReactMethod
@@ -182,6 +357,15 @@ class ChiloeCameraModule(
     ): IntArray
 
     private external fun nativeGetSensorGeometry(sessionId: Int): IntArray
+
+    private external fun nativeGetCapabilitiesInt(sessionId: Int): IntArray
+
+    private external fun nativeGetCapabilitiesDouble(sessionId: Int): DoubleArray
+
+    private external fun nativeFocusAt(sessionId: Int, x: Float, y: Float)
+
+    private external fun nativeStripSensitiveExif(filePath: String)
+
     private external fun nativeSetPreviewSurface(sessionId: Int, surface: Surface)
     private external fun nativeClearPreviewSurface(sessionId: Int)
     private external fun nativeClose(sessionId: Int)

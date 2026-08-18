@@ -1,5 +1,7 @@
 #include "camera_ndk.hpp"
 
+#include "exif_minimal.hpp"
+
 #include <android/native_window_jni.h>
 #include <jni.h>
 
@@ -166,6 +168,84 @@ Java_cl_chiloe_biodiversidad_camera_ChiloeCameraModule_nativeGetSensorGeometry(
     } catch (const std::exception& error) {
         throwJava(env, error);
         return nullptr;
+    }
+}
+
+// Rangos que el sensor acepta, para que la UI de controles manuales no ofrezca
+// valores que el driver ignora. Los double van en un array aparte porque JNI no
+// mezcla tipos en un mismo array primitivo.
+// Enteros: {isoMin, isoMax, maxAfRegions, manualSensor?1:0, previewW, previewH}
+extern "C" JNIEXPORT jintArray JNICALL
+Java_cl_chiloe_biodiversidad_camera_ChiloeCameraModule_nativeGetCapabilitiesInt(
+    JNIEnv* env,
+    jobject,
+    jint sessionId) {
+    try {
+        const auto caps = getSession(sessionId)->capabilities();
+        jint values[] = {
+            caps.isoMin,
+            caps.isoMax,
+            caps.maxAfRegions,
+            caps.supportsManualSensor ? 1 : 0,
+            caps.previewWidth,
+            caps.previewHeight,
+        };
+        jintArray array = env->NewIntArray(6);
+        env->SetIntArrayRegion(array, 0, 6, values);
+        return array;
+    } catch (const std::exception& error) {
+        throwJava(env, error);
+        return nullptr;
+    }
+}
+
+// Reales: {exposiciónMínMs, exposiciónMáxMs, dioptríasMáximas}
+extern "C" JNIEXPORT jdoubleArray JNICALL
+Java_cl_chiloe_biodiversidad_camera_ChiloeCameraModule_nativeGetCapabilitiesDouble(
+    JNIEnv* env,
+    jobject,
+    jint sessionId) {
+    try {
+        const auto caps = getSession(sessionId)->capabilities();
+        jdouble values[] = {
+            caps.exposureMinMs,
+            caps.exposureMaxMs,
+            static_cast<jdouble>(caps.focusMaxDiopters),
+        };
+        jdoubleArray array = env->NewDoubleArray(3);
+        env->SetDoubleArrayRegion(array, 0, 3, values);
+        return array;
+    } catch (const std::exception& error) {
+        throwJava(env, error);
+        return nullptr;
+    }
+}
+
+// Las fotos de la galería llegan con el EXIF completo del aparato que las
+// tomó, GPS incluido. Se pasan por el mismo saneado que las capturas propias.
+extern "C" JNIEXPORT void JNICALL
+Java_cl_chiloe_biodiversidad_camera_ChiloeCameraModule_nativeStripSensitiveExif(
+    JNIEnv* env,
+    jobject,
+    jstring filePath) {
+    try {
+        chiloe::camera::stripSensitiveExif(toString(env, filePath));
+    } catch (const std::exception& error) {
+        throwJava(env, error);
+    }
+}
+
+extern "C" JNIEXPORT void JNICALL
+Java_cl_chiloe_biodiversidad_camera_ChiloeCameraModule_nativeFocusAt(
+    JNIEnv* env,
+    jobject,
+    jint sessionId,
+    jfloat x,
+    jfloat y) {
+    try {
+        getSession(sessionId)->focusAt(x, y);
+    } catch (const std::exception& error) {
+        throwJava(env, error);
     }
 }
 
