@@ -42,6 +42,7 @@ export const SpeciesStackNavigator = ({
         <MiEncuentroFormScreen
           onBack={() => navigation.goBack()}
           onSaved={() => navigation.popToTop()}
+          reino={route.params.species.reino}
           species={route.params.species}
         />
       )}

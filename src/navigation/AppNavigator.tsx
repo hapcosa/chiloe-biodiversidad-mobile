@@ -6,7 +6,7 @@ import {useAuth} from '../auth/AuthContext';
 import {haVistoBienvenida, marcarBienvenidaVista} from '../db/bienvenida';
 import {BienvenidaScreen} from '../screens/BienvenidaScreen';
 import {BibliotecaScreen} from '../screens/BibliotecaScreen';
-import {CameraScreen} from '../screens/CameraScreen';
+import {CapturaFlowScreen} from '../screens/CapturaFlowScreen';
 import {GuardadosScreen} from '../screens/GuardadosScreen';
 import {HomeScreen} from '../screens/HomeScreen';
 import {LoginScreen} from '../screens/LoginScreen';
@@ -50,17 +50,16 @@ const GuardadosStack = (): React.JSX.Element => (
   <SpeciesStackNavigator ListaScreen={GuardadosScreen} />
 );
 
-// Acceso rápido al visor desde cualquier parte de la app. La foto queda en la
-// caché local; para asociarla a una especie se usa "Mi encuentro" en su ficha.
-//
 // Se desmonta al perder el foco: la pestaña no se descarga sola y dejaría la
-// cámara tomada, con lo que ninguna otra pantalla podría abrirla.
+// cámara tomada, con lo que ninguna otra pantalla podría abrirla. Desmontarla
+// también reinicia el flujo, que es lo que corresponde: una captura a medio
+// camino no debe reaparecer días después.
 const CapturarTab = (): React.JSX.Element => {
   const isFocused = useIsFocused();
   if (!isFocused) {
     return <View style={styles.centered} />;
   }
-  return <CameraScreen />;
+  return <CapturaFlowScreen />;
 };
 
 interface TabBarIconProps {

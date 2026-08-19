@@ -18,7 +18,7 @@ import {syncPendingMutations} from '../sync/mutationSync';
 import {colors, spacing} from '../styles/theme';
 import {CameraScreen} from './CameraScreen';
 import type {PrecisionDeclarada} from '../types/avistamiento';
-import type {Species} from '../types/domain';
+import type {Reino, Species} from '../types/domain';
 import {
   construirObservadoEn,
   esHoy,
@@ -35,16 +35,26 @@ const PRECISIONES: Array<{valor: PrecisionDeclarada; titulo: string; ayuda: stri
 ];
 
 interface MiEncuentroFormScreenProps {
-  species: Species;
+  // `null` cuando se llega desde la cámara sin saber qué es: el encuentro se
+  // guarda igual y la comunidad lo identifica después.
+  species: Species | null;
+  // El reino de la especie, o el que declaró quien registra si no hay especie.
+  // No es opcional porque la columna no admite nulo y el mapa filtra por ella.
+  reino: Reino;
+  // Foto ya tomada antes de abrir el formulario (flujo de la pestaña Capturar).
+  fotoInicial?: string | null;
   onBack: () => void;
   onSaved: () => void;
 }
 
 export const MiEncuentroFormScreen = ({
   species,
+  reino,
+  fotoInicial = null,
   onBack,
   onSaved,
 }: MiEncuentroFormScreenProps): React.JSX.Element => {
+  const [nombreSugerido, setNombreSugerido] = useState('');
   const [nota, setNota] = useState('');
   const [fecha, setFecha] = useState<PartesFecha>(() => partesDeFecha(new Date()));
   const [precisionDeclarada, setPrecisionDeclarada] =
@@ -52,7 +62,7 @@ export const MiEncuentroFormScreen = ({
   const [location, setLocation] = useState<LocationResult | null>(null);
   const [locationError, setLocationError] = useState<string | null>(null);
   const [isLocating, setIsLocating] = useState(true);
-  const [photoPath, setPhotoPath] = useState<string | null>(null);
+  const [photoPath, setPhotoPath] = useState<string | null>(fotoInicial);
   const [showCamera, setShowCamera] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
@@ -120,8 +130,9 @@ export const MiEncuentroFormScreen = ({
       // encuentro (offline-first). local_photo_path es lo que se muestra
       // en la UI mientras tanto.
       await enqueueAvistamiento({
-        especie_id: species.id,
-        reino: species.reino,
+        especie_id: species?.id ?? null,
+        reino,
+        nombre_sugerido: species === null ? nombreSugerido.trim() || null : null,
         descripcion: nota.trim() || null,
         foto_key: null,
         local_photo_path: photoPath,
@@ -134,7 +145,9 @@ export const MiEncuentroFormScreen = ({
       // Intento de sync inmediato si hay red; si no, queda en cola y lo
       // recoge startMutationSyncWorker en el próximo cambio de conectividad.
       void syncPendingMutations();
-      await markSpeciesViewed(species.id);
+      if (species !== null) {
+        await markSpeciesViewed(species.id);
+      }
 
       onSaved();
     } catch (error) {
@@ -157,7 +170,9 @@ export const MiEncuentroFormScreen = ({
   return (
     <ScrollView contentContainerStyle={styles.container}>
       <Pressable accessibilityRole="button" onPress={onBack} style={styles.backButton}>
-        <Text style={styles.backButtonText}>← {species.nombre_comun || species.nombre_cientifico}</Text>
+        <Text style={styles.backButtonText}>
+          ← {species ? species.nombre_comun || species.nombre_cientifico : 'Volver'}
+        </Text>
       </Pressable>
 
       <View style={styles.card}>
@@ -166,6 +181,21 @@ export const MiEncuentroFormScreen = ({
           Privado por defecto — solo tú lo verás en tu perfil, salvo que decidas compartirlo.
         </Text>
       </View>
+
+      {species === null ? (
+        <View style={styles.card}>
+          <Text style={styles.label}>¿Cómo lo llamarías? (opcional)</Text>
+          <Text style={styles.subtitle}>
+            No hace falta acertar. Si lo compartes, la comunidad puede proponer la especie.
+          </Text>
+          <TextInput
+            onChangeText={setNombreSugerido}
+            placeholder="Pájaro negro de pecho blanco"
+            style={styles.notaInput}
+            value={nombreSugerido}
+          />
+        </View>
+      ) : null}
 
       <View style={styles.card}>
         <Text style={styles.label}>Nota privada</Text>
@@ -281,7 +311,7 @@ export const MiEncuentroFormScreen = ({
         )}
       </View>
 
-      {requiereAvisoFauna(species.reino) ? (
+      {requiereAvisoFauna(reino) ? (
         <View accessibilityRole="alert" style={styles.avisoFauna}>
           <Text style={styles.avisoFaunaText}>{AVISO_FAUNA_ENCUENTRO}</Text>
         </View>
