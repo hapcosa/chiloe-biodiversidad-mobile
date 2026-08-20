@@ -26,6 +26,7 @@ interface SpeciesRow {
   updated_at: string | null;
   imagenes_urls: string;
   genero_nombre: string | null;
+  categoria_id: number | null;
 }
 
 const stringify = (value: unknown): string => JSON.stringify(value ?? null);
@@ -63,6 +64,7 @@ const rowToSpecies = (row: SpeciesRow): Species => ({
   updated_at: row.updated_at,
   imagenes_urls: parseJson(row.imagenes_urls, []),
   genero_nombre: row.genero_nombre ?? undefined,
+  categoria_id: row.categoria_id,
 });
 
 export const upsertSpecies = async (speciesList: Species[]): Promise<void> => {
@@ -73,8 +75,8 @@ export const upsertSpecies = async (speciesList: Species[]): Promise<void> => {
         descripcion, habitat, distribucion_chiloe, endemica, estado_conservacion,
         fuentes, geo_lat, geo_lng, atributos_especificos, foto_portada_key,
         fotos_keys, creado_por, revisado_por, fecha_revision, created_at,
-        updated_at, imagenes_urls, genero_nombre
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        updated_at, imagenes_urls, genero_nombre, categoria_id
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       ON CONFLICT(id) DO UPDATE SET
         reino = excluded.reino,
         genero_id = excluded.genero_id,
@@ -98,7 +100,8 @@ export const upsertSpecies = async (speciesList: Species[]): Promise<void> => {
         created_at = excluded.created_at,
         updated_at = excluded.updated_at,
         imagenes_urls = excluded.imagenes_urls,
-        genero_nombre = excluded.genero_nombre`,
+        genero_nombre = excluded.genero_nombre,
+        categoria_id = excluded.categoria_id`,
       [
         species.id,
         species.reino,
@@ -124,6 +127,7 @@ export const upsertSpecies = async (speciesList: Species[]): Promise<void> => {
         species.updated_at ?? null,
         stringify(species.imagenes_urls),
         species.genero_nombre ?? null,
+        species.categoria_id ?? null,
       ],
     );
   }
@@ -176,7 +180,10 @@ export const pruneSpeciesNotIn = async (ids: number[]): Promise<number> => {
 };
 
 export const listCachedSpecies = async (
-  filters: Pick<SpeciesFilters, 'reino' | 'q' | 'limit' | 'offset'> = {},
+  filters: Pick<
+    SpeciesFilters,
+    'reino' | 'categoria_id' | 'q' | 'limit' | 'offset'
+  > = {},
 ): Promise<Species[]> => {
   const where: string[] = [];
   const params: (string | number | null)[] = [];
@@ -184,6 +191,11 @@ export const listCachedSpecies = async (
   if (filters.reino) {
     where.push('reino = ?');
     params.push(filters.reino);
+  }
+
+  if (filters.categoria_id !== undefined) {
+    where.push('categoria_id = ?');
+    params.push(filters.categoria_id);
   }
 
   if (filters.q && filters.q.trim() !== '') {

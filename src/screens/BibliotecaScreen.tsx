@@ -11,12 +11,13 @@ import {
   View,
   type ListRenderItem,
 } from 'react-native';
-import {speciesApi} from '../api';
+import {categoriasApi, speciesApi} from '../api';
+import {getCachedCategorias, saveCachedCategorias} from '../db/categoriasCache';
 import {initializeDatabase} from '../db/connection';
 import {listCachedSpecies, upsertSpecies} from '../db/speciesCache';
 import {listViewedSpeciesIds, markSpeciesViewed} from '../db/speciesViewed';
 import {colors, reinoColors, reinoEmoji, reinoLabels, spacing} from '../styles/theme';
-import type {Reino, Species} from '../types/domain';
+import type {Categoria, Reino, Species} from '../types/domain';
 
 interface BibliotecaScreenProps {
   onSelectSpecies: (species: Species) => void;
@@ -41,6 +42,8 @@ export const BibliotecaScreen = ({
   const [species, setSpecies] = useState<Species[]>([]);
   const [query, setQuery] = useState('');
   const [selectedReino, setSelectedReino] = useState<Reino | undefined>();
+  const [categorias, setCategorias] = useState<Categoria[]>([]);
+  const [selectedCategoria, setSelectedCategoria] = useState<number | undefined>();
   const [isLoading, setIsLoading] = useState(true);
   const [isOfflineData, setIsOfflineData] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -57,6 +60,7 @@ export const BibliotecaScreen = ({
     try {
       const response = await speciesApi.list({
         reino: selectedReino,
+        categoria_id: selectedCategoria,
         q: query.trim() || undefined,
         limit: PAGE_SIZE,
         offset: 0,
@@ -70,6 +74,7 @@ export const BibliotecaScreen = ({
     } catch (loadError) {
       const cached = await listCachedSpecies({
         reino: selectedReino,
+        categoria_id: selectedCategoria,
         q: query.trim() || undefined,
         limit: PAGE_SIZE,
         offset: 0,
@@ -87,7 +92,7 @@ export const BibliotecaScreen = ({
     } finally {
       setIsLoading(false);
     }
-  }, [query, selectedReino]);
+  }, [query, selectedCategoria, selectedReino]);
 
   // Sin esto la lista se quedaba en la primera página: con 103 especies en el
   // catálogo, el usuario solo veía 50. Offline no se pagina porque el cache
@@ -101,6 +106,7 @@ export const BibliotecaScreen = ({
     try {
       const response = await speciesApi.list({
         reino: selectedReino,
+        categoria_id: selectedCategoria,
         q: query.trim() || undefined,
         limit: PAGE_SIZE,
         offset: species.length,
@@ -119,7 +125,34 @@ export const BibliotecaScreen = ({
     } finally {
       setIsLoadingMore(false);
     }
-  }, [isLoading, isLoadingMore, isOfflineData, query, selectedReino, species.length, total]);
+  }, [
+    isLoading,
+    isLoadingMore,
+    isOfflineData,
+    query,
+    selectedCategoria,
+    selectedReino,
+    species.length,
+    total,
+  ]);
+
+  // Se piden una sola vez: son quince filas que casi nunca cambian. Si la red
+  // falla se usa lo cacheado, para que los subgrupos no aparezcan y
+  // desaparezcan según haya señal.
+  useEffect(() => {
+    const cargarCategorias = async (): Promise<void> => {
+      await initializeDatabase();
+      try {
+        const remotas = await categoriasApi.list();
+        setCategorias(remotas);
+        await saveCachedCategorias(remotas);
+      } catch {
+        setCategorias(await getCachedCategorias());
+      }
+    };
+
+    void cargarCategorias();
+  }, []);
 
   useEffect(() => {
     const timeout = setTimeout(() => {
@@ -182,6 +215,22 @@ export const BibliotecaScreen = ({
     );
   };
 
+  // Sin reino elegido no hay subgrupo que ofrecer: "Aves" y "Coníferas" en la
+  // misma fila serían dos ejes mezclados. Los vacíos se esconden —"Peces"
+  // existe en el backend pero todavía no tiene fichas— y un reino con un solo
+  // subgrupo tampoco muestra nada: elegirlo no filtraría nada.
+  const subgrupos = selectedReino
+    ? categorias.filter(
+        categoria =>
+          categoria.reino === selectedReino && categoria.total_especies > 0,
+      )
+    : [];
+
+  const elegirReino = (reino: Reino | undefined): void => {
+    setSelectedReino(reino);
+    setSelectedCategoria(undefined);
+  };
+
   return (
     <View style={styles.container}>
       <View style={styles.searchRow}>
@@ -203,7 +252,7 @@ export const BibliotecaScreen = ({
             <Pressable
               accessibilityRole="button"
               key={reino ?? 'all'}
-              onPress={() => setSelectedReino(reino)}
+              onPress={() => elegirReino(reino)}
               style={[
                 styles.filterChip,
                 selected && {
@@ -218,6 +267,44 @@ export const BibliotecaScreen = ({
           );
         })}
       </View>
+
+      {subgrupos.length > 1 ? (
+        <View style={styles.filters}>
+          <Pressable
+            accessibilityRole="button"
+            onPress={() => setSelectedCategoria(undefined)}
+            style={[
+              styles.subgrupoChip,
+              selectedCategoria === undefined && styles.subgrupoChipSelected,
+            ]}>
+            <Text
+              style={[
+                styles.subgrupoText,
+                selectedCategoria === undefined && styles.filterTextSelected,
+              ]}>
+              Todo el reino
+            </Text>
+          </Pressable>
+          {subgrupos.map(categoria => {
+            const selected = categoria.id === selectedCategoria;
+            return (
+              <Pressable
+                accessibilityRole="button"
+                key={categoria.id}
+                onPress={() => setSelectedCategoria(categoria.id)}
+                style={[
+                  styles.subgrupoChip,
+                  selected && styles.subgrupoChipSelected,
+                ]}>
+                <Text
+                  style={[styles.subgrupoText, selected && styles.filterTextSelected]}>
+                  {categoria.nombre}
+                </Text>
+              </Pressable>
+            );
+          })}
+        </View>
+      ) : null}
 
       {error ? <Text style={styles.statusText}>{error}</Text> : null}
       {isOfflineData ? <Text style={styles.offlineText}>Modo offline</Text> : null}
@@ -287,6 +374,21 @@ const styles = StyleSheet.create({
     flexWrap: 'wrap',
     gap: spacing.sm,
     marginBottom: spacing.sm,
+  },
+  subgrupoChip: {
+    borderColor: colors.border,
+    borderRadius: 999,
+    borderWidth: 1,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.xs,
+  },
+  subgrupoChipSelected: {
+    backgroundColor: colors.primary,
+    borderColor: colors.primary,
+  },
+  subgrupoText: {
+    color: colors.muted,
+    fontSize: 12,
   },
   filterChip: {
     borderColor: colors.border,
