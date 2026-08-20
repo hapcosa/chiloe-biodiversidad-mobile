@@ -31,8 +31,12 @@ type RootTabParamList = {
 
 // Con siete pestañas cada una tiene ~51dp en un teléfono de 360dp de ancho:
 // "Comunidad" no entra y el navigator la cortaba en "Comun…". Etiquetas cortas
-// y tipografía de 10 con el tracking apretado; el escalado de fuente del
+// y tipografía de 9 con el tracking apretado; el escalado de fuente del
 // sistema queda desactivado para que no vuelva a truncarse.
+//
+// Verificado en un SM-A536E (411dp de ancho): con 10 sobrevivía "Guardad…",
+// porque cada item reserva padding horizontal propio además de la fuente. Lo
+// que entra es 9 con el padding del item en cero.
 const tabLabels: Record<keyof RootTabParamList, string> = {
   Home: 'Inicio',
   Explorar: 'Explorar',
@@ -144,6 +148,7 @@ export const AppNavigator = (): React.JSX.Element => {
         ),
         tabBarLabel: tabLabels[route.name],
         tabBarLabelStyle: styles.tabLabel,
+        tabBarItemStyle: styles.tabItem,
         tabBarInactiveTintColor: colors.muted,
         tabBarStyle: styles.tabBar,
       })}>
@@ -170,8 +175,11 @@ const styles = StyleSheet.create({
     marginTop: 12,
   },
   tabLabel: {
-    fontSize: 10,
-    letterSpacing: -0.2,
+    fontSize: 9,
+    letterSpacing: -0.3,
+  },
+  tabItem: {
+    paddingHorizontal: 0,
   },
   tabBar: {
     backgroundColor: colors.surface,
