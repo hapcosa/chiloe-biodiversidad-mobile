@@ -23,9 +23,11 @@ export const schemaStatements = [
     created_at TEXT,
     updated_at TEXT,
     imagenes_urls TEXT NOT NULL,
-    genero_nombre TEXT
+    genero_nombre TEXT,
+    categoria_id INTEGER
   )`,
   'CREATE INDEX IF NOT EXISTS idx_species_reino ON species(reino)',
+  'CREATE INDEX IF NOT EXISTS idx_species_categoria ON species(categoria_id)',
   'CREATE INDEX IF NOT EXISTS idx_species_nombre_comun ON species(nombre_comun)',
   `CREATE TABLE IF NOT EXISTS sync_state (
     key TEXT PRIMARY KEY,
@@ -78,4 +80,5 @@ export const schemaStatements = [
 // duplicada se ignora: es la señal de que la migración ya corrió.
 export const alterStatements = [
   "ALTER TABLE local_avistamientos ADD COLUMN precision_declarada TEXT NOT NULL DEFAULT 'exacto'",
+  'ALTER TABLE species ADD COLUMN categoria_id INTEGER',
 ];

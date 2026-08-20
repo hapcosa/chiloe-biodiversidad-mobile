@@ -2,6 +2,7 @@ import {appConfig} from '../config/appConfig';
 import {ApiClient} from './apiClient';
 import {AvistamientosApi} from './avistamientosApi';
 import {AuthApi} from './authApi';
+import {CategoriasApi} from './categoriasApi';
 import {IdentificacionesApi} from './identificacionesApi';
 import {MapaApi} from './mapaApi';
 import {PortadaApi} from './portadaApi';
@@ -36,4 +37,5 @@ export const uploadsApi = new UploadsApi(apiClient);
 export const identificacionesApi = new IdentificacionesApi(apiClient);
 export const mapaApi = new MapaApi(apiClient);
 export const portadaApi = new PortadaApi(apiClient);
+export const categoriasApi = new CategoriasApi(apiClient);
 

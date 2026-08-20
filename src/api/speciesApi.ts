@@ -8,6 +8,7 @@ export class SpeciesApi {
   list(filters: SpeciesFilters = {}): Promise<SpeciesListResponse> {
     const query = buildQueryString({
       reino: filters.reino,
+      categoria_id: filters.categoria_id,
       genero_id: filters.genero_id,
       familia_id: filters.familia_id,
       conservacion: filters.conservacion,
