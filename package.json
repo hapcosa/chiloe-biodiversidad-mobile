@@ -23,7 +23,8 @@
     "react-native-maps": "^1.29.0",
     "react-native-quick-sqlite": "latest",
     "react-native-safe-area-context": "^5.8.0",
-    "react-native-screens": "^4.26.2"
+    "react-native-screens": "^4.26.2",
+    "react-native-svg": "^15.15.5"
   },
   "devDependencies": {
     "@babel/core": "^7.28.0",

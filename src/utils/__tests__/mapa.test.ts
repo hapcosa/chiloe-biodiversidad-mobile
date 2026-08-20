@@ -1,6 +1,7 @@
 import type {CeldaMapa} from '../../types/mapa';
 import {
   esPuntoCaliente,
+  plural,
   radioCeldaMetros,
   regionToBbox,
   regionToZoom,
@@ -127,5 +128,16 @@ describe('radioCeldaMetros', () => {
   it('usa el lado real de la celda, no un radio fijo', () => {
     expect(radioCeldaMetros(celda({grados: 0.02}))).toBeCloseTo(1113.2, 0);
     expect(radioCeldaMetros(celda({grados: 0.2}))).toBeCloseTo(11132, 0);
+  });
+});
+
+describe('plural', () => {
+  it('usa el singular cuando hay uno solo', () => {
+    expect(plural(1, 'encuentro', 'encuentros')).toBe('1 encuentro');
+  });
+
+  it('usa el plural con cero y con más de uno', () => {
+    expect(plural(0, 'encuentro', 'encuentros')).toBe('0 encuentros');
+    expect(plural(4, 'especie', 'especies')).toBe('4 especies');
   });
 });
