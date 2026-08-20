@@ -4,6 +4,7 @@ import {AvistamientosApi} from './avistamientosApi';
 import {AuthApi} from './authApi';
 import {IdentificacionesApi} from './identificacionesApi';
 import {MapaApi} from './mapaApi';
+import {PortadaApi} from './portadaApi';
 import {SpeciesApi} from './speciesApi';
 import {UploadsApi} from './uploadsApi';
 
@@ -34,4 +35,5 @@ export const avistamientosApi = new AvistamientosApi(apiClient);
 export const uploadsApi = new UploadsApi(apiClient);
 export const identificacionesApi = new IdentificacionesApi(apiClient);
 export const mapaApi = new MapaApi(apiClient);
+export const portadaApi = new PortadaApi(apiClient);
 
