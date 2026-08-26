@@ -33,6 +33,18 @@ export interface Species {
   updated_at?: string | null;
   imagenes_urls: string[];
   genero_nombre?: string;
+  categoria_id?: number | null;
+}
+
+// Subgrupo dentro de un reino ("Aves" en animalia). Es la misma tabla que usa
+// la curaduría: el backend no tiene dos particiones, tiene una.
+export interface Categoria {
+  id: number;
+  slug: string;
+  nombre: string;
+  reino: Reino;
+  descripcion?: string | null;
+  total_especies: number;
 }
 
 export interface Pagination {
@@ -50,6 +62,7 @@ export interface SpeciesListResponse {
 
 export interface SpeciesFilters {
   reino?: Reino;
+  categoria_id?: number;
   genero_id?: number;
   familia_id?: number;
   conservacion?: string;
