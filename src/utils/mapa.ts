@@ -78,3 +78,29 @@ export const radioCeldaMetros = (celda: CeldaMapa): number => {
 // singular se decide por el número, no por el sustantivo.
 export const plural = (cantidad: number, singular: string, plural_: string): string =>
   `${cantidad} ${cantidad === 1 ? singular : plural_}`;
+
+// Zoom con el que se abre "mi ubicación" cuando el mapa todavía muestra Chiloé
+// entero: centrarse sin acercar dejaría al usuario mirando un punto perdido en
+// la isla. ~11 km de lado.
+export const DELTA_UBICACION_CERCANA = 0.1;
+
+// Adónde mover el mapa al tocar "mi ubicación". Si ya estaba cerca conserva la
+// escala —moverse no debería cambiar el zoom que uno eligió—; si estaba lejos
+// acerca hasta ver el entorno.
+export const regionDeUbicacion = (
+  lat: number,
+  lng: number,
+  actual: RegionLike,
+): RegionLike => {
+  const latitudeDelta = Math.abs(actual.latitudeDelta);
+  const longitudeDelta = Math.abs(actual.longitudeDelta);
+  if (latitudeDelta <= DELTA_UBICACION_CERCANA) {
+    return {latitude: lat, longitude: lng, latitudeDelta, longitudeDelta};
+  }
+  return {
+    latitude: lat,
+    longitude: lng,
+    latitudeDelta: DELTA_UBICACION_CERCANA,
+    longitudeDelta: DELTA_UBICACION_CERCANA,
+  };
+};

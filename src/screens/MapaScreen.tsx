@@ -11,6 +11,11 @@ import MapView, {Circle, MapType, Marker, PROVIDER_GOOGLE} from 'react-native-ma
 import {mapaApi} from '../api';
 import {getCachedSpecies} from '../db/speciesCache';
 import {listLocalAvistamientos} from '../db/mutationQueue';
+import {
+  getCurrentLocation,
+  hasLocationPermission,
+  requestLocationPermission,
+} from '../native/location';
 import {colors, reinoColors, reinoLabels, spacing} from '../styles/theme';
 import type {LocalAvistamiento} from '../types/avistamiento';
 import type {Reino} from '../types/domain';
@@ -19,6 +24,7 @@ import {
   esPuntoCaliente,
   plural,
   radioCeldaMetros,
+  regionDeUbicacion,
   regionToBbox,
   regionToZoom,
   regionesEquivalentes,
@@ -74,8 +80,67 @@ const CapaToggle = ({activa, etiqueta, onPress}: CapaToggleProps): React.JSX.Ele
   </Pressable>
 );
 
+interface CeldaCapaProps {
+  celda: CeldaMapa;
+  onPress: (celda: CeldaMapa) => void;
+}
+
+// Memoizado: mover el mapa vuelve a renderizar la pantalla, y sin esto cada
+// gesto redibujaba un Circle y un Marker por celda. Con celdas suficientes eso
+// es lo que se siente como tirones.
+const CeldaCapa = React.memo(({celda, onPress}: CeldaCapaProps): React.JSX.Element => {
+  const caliente = esPuntoCaliente(celda);
+  const color = caliente ? colors.secondary : colors.primary;
+  return (
+    <>
+      <Circle
+        center={{latitude: celda.lat, longitude: celda.lng}}
+        fillColor={`${color}55`}
+        radius={radioCeldaMetros(celda)}
+        strokeColor={color}
+        strokeWidth={caliente ? 2 : 1}
+      />
+      <Marker
+        coordinate={{latitude: celda.lat, longitude: celda.lng}}
+        onPress={() => onPress(celda)}
+        title={
+          caliente
+            ? `Punto caliente: ${plural(celda.total, 'registro', 'registros')}`
+            : plural(celda.total, 'encuentro', 'encuentros')
+        }
+        description={
+          celda.sensible
+            ? 'Especie amenazada: la ubicación se muestra aproximada.'
+            : `${plural(celda.especies_distintas, 'especie', 'especies')} en esta zona`
+        }
+      />
+    </>
+  );
+});
+
+const MiEncuentroMarcador = React.memo(
+  ({encuentro}: {encuentro: LocalAvistamiento}): React.JSX.Element => (
+    <Marker
+      coordinate={{latitude: encuentro.geo_lat, longitude: encuentro.geo_lng}}
+      description={encuentro.nombre_sugerido ?? 'Mi encuentro'}
+      pinColor={reinoColors[encuentro.reino]}
+      title="Mi encuentro"
+    />
+  ),
+);
+
+const AreaMarcador = React.memo(
+  ({area}: {area: AreaProtegida}): React.JSX.Element => (
+    <Marker
+      coordinate={{latitude: area.centro_lat, longitude: area.centro_lng}}
+      description={area.administrador ?? undefined}
+      pinColor={colors.success}
+      title={area.nombre}
+    />
+  ),
+);
+
 export const MapaScreen = (): React.JSX.Element => {
-  const [region, setRegion] = useState<RegionLike>(REGION_CHILOE);
   const [celdas, setCeldas] = useState<CeldaMapa[]>([]);
   const [mios, setMios] = useState<LocalAvistamiento[]>([]);
   const [cargando, setCargando] = useState(false);
@@ -88,12 +153,26 @@ export const MapaScreen = (): React.JSX.Element => {
   const [especieId, setEspecieId] = useState<number | null>(null);
   const [nombreEspecie, setNombreEspecie] = useState<string | null>(null);
   const [seleccion, setSeleccion] = useState<CeldaMapa | null>(null);
+  const [ubicando, setUbicando] = useState(false);
+  const [verMiUbicacion, setVerMiUbicacion] = useState(false);
 
   const areas = useAreasProtegidas(verAreas);
+  const mapaRef = useRef<MapView | null>(null);
+  // La región no es estado: guardarla en uno volvía a renderizar la pantalla
+  // entera —y con ella cada Marker y cada Circle— en cada gesto sobre el mapa.
+  // Solo la leen callbacks, nunca el render.
+  const region = useRef<RegionLike>(REGION_CHILOE);
   const ultimaRegion = useRef<RegionLike | null>(null);
 
   useEffect(() => {
     void listLocalAvistamientos().then(setMios);
+  }, []);
+
+  // Si el permiso ya se concedió antes —el formulario de encuentro lo pide—,
+  // el punto azul aparece sin diálogo. Si no, no se molesta a nadie al abrir
+  // el mapa: el permiso se pide recién al tocar "Mi ubicación".
+  useEffect(() => {
+    void hasLocationPermission().then(setVerMiUbicacion);
   }, []);
 
   const cargarCeldas = useCallback(
@@ -121,15 +200,13 @@ export const MapaScreen = (): React.JSX.Element => {
   useEffect(() => {
     ultimaRegion.current = null;
     if (verComunidad) {
-      void cargarCeldas(region);
+      void cargarCeldas(region.current);
     }
-    // `region` queda fuera a propósito: moverse lo maneja onRegionChangeComplete.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [cargarCeldas, verComunidad]);
 
   const onRegionChangeComplete = useCallback(
     (nueva: RegionLike) => {
-      setRegion(nueva);
+      region.current = nueva;
       if (!verComunidad) {
         return;
       }
@@ -142,6 +219,29 @@ export const MapaScreen = (): React.JSX.Element => {
     },
     [cargarCeldas, verComunidad],
   );
+
+  const irAMiUbicacion = useCallback(async () => {
+    setUbicando(true);
+    setError(null);
+    try {
+      // Se pide aparte de getCurrentLocation —que también lo pediría— para
+      // poder distinguir "no me dejaron" de "el GPS no respondió".
+      if (!(await requestLocationPermission())) {
+        setVerMiUbicacion(false);
+        setError('Sin permiso de ubicación no puedo mostrarte dónde estás.');
+        return;
+      }
+      setVerMiUbicacion(true);
+      const {lat, lng} = await getCurrentLocation();
+      const destino = regionDeUbicacion(lat, lng, region.current);
+      region.current = destino;
+      mapaRef.current?.animateToRegion(destino, 500);
+    } catch {
+      setError('No se pudo obtener tu ubicación. Probá al aire libre.');
+    } finally {
+      setUbicando(false);
+    }
+  }, []);
 
   const limpiarEspecie = useCallback(() => {
     setEspecieId(null);
@@ -160,6 +260,13 @@ export const MapaScreen = (): React.JSX.Element => {
     setNombreEspecie(especie?.nombre_comun ?? `Especie #${celda.especie_dominante_id}`);
   }, []);
 
+  const onCeldaPress = useCallback(
+    (celda: CeldaMapa) => {
+      void filtrarPorCelda(celda);
+    },
+    [filtrarPorCelda],
+  );
+
   const miosVisibles = useMemo(
     () => (reino ? mios.filter(encuentro => encuentro.reino === reino) : mios),
     [mios, reino],
@@ -172,65 +279,27 @@ export const MapaScreen = (): React.JSX.Element => {
         mapType={mapType}
         onRegionChangeComplete={onRegionChangeComplete}
         provider={PROVIDER_GOOGLE}
+        ref={mapaRef}
+        showsMyLocationButton={false}
+        showsUserLocation={verMiUbicacion}
         style={styles.mapa}>
         {verComunidad &&
-          celdas.map(celda => {
-            const caliente = esPuntoCaliente(celda);
-            const color = caliente ? colors.secondary : colors.primary;
-            return (
-              <React.Fragment key={`${celda.lat}:${celda.lng}:${celda.grados}`}>
-                <Circle
-                  center={{latitude: celda.lat, longitude: celda.lng}}
-                  fillColor={`${color}55`}
-                  radius={radioCeldaMetros(celda)}
-                  strokeColor={color}
-                  strokeWidth={caliente ? 2 : 1}
-                />
-                <Marker
-                  coordinate={{latitude: celda.lat, longitude: celda.lng}}
-                  onPress={() => {
-                    void filtrarPorCelda(celda);
-                  }}
-                  title={
-                    caliente
-                      ? `Punto caliente: ${plural(celda.total, 'registro', 'registros')}`
-                      : plural(celda.total, 'encuentro', 'encuentros')
-                  }
-                  description={
-                    celda.sensible
-                      ? 'Especie amenazada: la ubicación se muestra aproximada.'
-                      : `${plural(
-                          celda.especies_distintas,
-                          'especie',
-                          'especies',
-                        )} en esta zona`
-                  }
-                />
-              </React.Fragment>
-            );
-          })}
+          celdas.map(celda => (
+            <CeldaCapa
+              celda={celda}
+              key={`${celda.lat}:${celda.lng}:${celda.grados}`}
+              onPress={onCeldaPress}
+            />
+          ))}
 
         {verMios &&
           miosVisibles.map(encuentro => (
-            <Marker
-              coordinate={{latitude: encuentro.geo_lat, longitude: encuentro.geo_lng}}
-              description={encuentro.nombre_sugerido ?? 'Mi encuentro'}
-              key={encuentro.local_id}
-              pinColor={reinoColors[encuentro.reino]}
-              title="Mi encuentro"
-            />
+            <MiEncuentroMarcador encuentro={encuentro} key={encuentro.local_id} />
           ))}
 
         {verAreas &&
-          areas.map(area => (
-            <Marker
-              coordinate={{latitude: area.centro_lat, longitude: area.centro_lng}}
-              description={area.administrador ?? undefined}
-              key={`area-${area.id}`}
-              pinColor={colors.success}
-              title={area.nombre}
-            />
-          ))}
+          areas.map(area => <AreaMarcador area={area} key={`area-${area.id}`} />)}
+
       </MapView>
 
       <View style={styles.panelSuperior}>
@@ -276,6 +345,21 @@ export const MapaScreen = (): React.JSX.Element => {
         )}
       </View>
 
+      <Pressable
+        accessibilityLabel="Ir a mi ubicación"
+        accessibilityRole="button"
+        disabled={ubicando}
+        onPress={() => {
+          void irAMiUbicacion();
+        }}
+        style={styles.botonUbicacion}>
+        {ubicando ? (
+          <ActivityIndicator color={colors.primary} size="small" />
+        ) : (
+          <Text style={styles.botonUbicacionTexto}>Mi ubicación</Text>
+        )}
+      </Pressable>
+
       {cargando && (
         <View style={styles.estado}>
           <ActivityIndicator color={colors.primary} />
@@ -313,6 +397,24 @@ const styles = StyleSheet.create({
   avisoSensibleTexto: {
     color: colors.text,
     fontSize: 13,
+  },
+  botonUbicacion: {
+    alignItems: 'center',
+    backgroundColor: colors.surface,
+    borderRadius: 20,
+    elevation: 3,
+    justifyContent: 'center',
+    minHeight: 40,
+    paddingHorizontal: spacing.md,
+    position: 'absolute',
+    // Por encima del aviso de especie sensible, que ocupa el borde inferior.
+    bottom: 96,
+    right: spacing.lg,
+  },
+  botonUbicacionTexto: {
+    color: colors.primary,
+    fontSize: 13,
+    fontWeight: '600',
   },
   chip: {
     backgroundColor: colors.surface,
