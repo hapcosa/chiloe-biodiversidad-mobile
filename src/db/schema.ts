@@ -1,4 +1,4 @@
-export const schemaStatements = [
+export const tableStatements = [
   `CREATE TABLE IF NOT EXISTS species (
     id INTEGER PRIMARY KEY,
     reino TEXT NOT NULL,
@@ -26,9 +26,6 @@ export const schemaStatements = [
     genero_nombre TEXT,
     categoria_id INTEGER
   )`,
-  'CREATE INDEX IF NOT EXISTS idx_species_reino ON species(reino)',
-  'CREATE INDEX IF NOT EXISTS idx_species_categoria ON species(categoria_id)',
-  'CREATE INDEX IF NOT EXISTS idx_species_nombre_comun ON species(nombre_comun)',
   `CREATE TABLE IF NOT EXISTS sync_state (
     key TEXT PRIMARY KEY,
     value TEXT NOT NULL,
@@ -53,7 +50,6 @@ export const schemaStatements = [
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL
   )`,
-  'CREATE INDEX IF NOT EXISTS idx_local_avistamientos_sync_status ON local_avistamientos(sync_status)',
   `CREATE TABLE IF NOT EXISTS mutation_queue (
     id TEXT PRIMARY KEY,
     type TEXT NOT NULL,
@@ -64,7 +60,6 @@ export const schemaStatements = [
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL
   )`,
-  'CREATE INDEX IF NOT EXISTS idx_mutation_queue_status ON mutation_queue(status, created_at)',
   `CREATE TABLE IF NOT EXISTS especies_vistas (
     especie_id INTEGER PRIMARY KEY,
     visto_en TEXT NOT NULL
@@ -81,4 +76,17 @@ export const schemaStatements = [
 export const alterStatements = [
   "ALTER TABLE local_avistamientos ADD COLUMN precision_declarada TEXT NOT NULL DEFAULT 'exacto'",
   'ALTER TABLE species ADD COLUMN categoria_id INTEGER',
+];
+
+// Los índices van después de los ALTER, no junto a las tablas: `CREATE TABLE
+// IF NOT EXISTS` no toca una tabla que ya existe, así que en un teléfono que
+// actualiza la app la columna nueva todavía no está cuando se crearía su
+// índice. Ese `no such column` rompía toda la inicialización y dejaba la app
+// colgada en "Cargando sesión...".
+export const indexStatements = [
+  'CREATE INDEX IF NOT EXISTS idx_species_reino ON species(reino)',
+  'CREATE INDEX IF NOT EXISTS idx_species_categoria ON species(categoria_id)',
+  'CREATE INDEX IF NOT EXISTS idx_species_nombre_comun ON species(nombre_comun)',
+  'CREATE INDEX IF NOT EXISTS idx_local_avistamientos_sync_status ON local_avistamientos(sync_status)',
+  'CREATE INDEX IF NOT EXISTS idx_mutation_queue_status ON mutation_queue(status, created_at)',
 ];
