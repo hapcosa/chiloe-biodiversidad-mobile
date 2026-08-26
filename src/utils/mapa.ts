@@ -73,3 +73,8 @@ export const radioCeldaMetros = (celda: CeldaMapa): number => {
   const metrosPorGradoLat = 111_320;
   return (celda.grados * metrosPorGradoLat) / 2;
 };
+
+// "1 encuentros" delataba que los textos del mapa se arman concatenando. El
+// singular se decide por el número, no por el sustantivo.
+export const plural = (cantidad: number, singular: string, plural_: string): string =>
+  `${cantidad} ${cantidad === 1 ? singular : plural_}`;

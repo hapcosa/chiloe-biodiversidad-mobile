@@ -3,6 +3,7 @@ import {useIsFocused} from '@react-navigation/native';
 import React, {useCallback, useEffect, useState} from 'react';
 import {ActivityIndicator, StyleSheet, Text, View} from 'react-native';
 import {useAuth} from '../auth/AuthContext';
+import {tabIcons} from '../components/icons/TabIcons';
 import {haVistoBienvenida, marcarBienvenidaVista} from '../db/bienvenida';
 import {BienvenidaScreen} from '../screens/BienvenidaScreen';
 import {BibliotecaScreen} from '../screens/BibliotecaScreen';
@@ -28,14 +29,22 @@ type RootTabParamList = {
   Perfil: undefined;
 };
 
-const tabIcons: Record<keyof RootTabParamList, string> = {
-  Home: '🏠',
-  Explorar: '🔎',
-  Capturar: '📷',
-  Mapa: '🗺️',
-  Comunidad: '👥',
-  Guardados: '🔖',
-  Perfil: '🙋',
+// Con siete pestañas cada una tiene ~51dp en un teléfono de 360dp de ancho:
+// "Comunidad" no entra y el navigator la cortaba en "Comun…". Etiquetas cortas
+// y tipografía de 9 con el tracking apretado; el escalado de fuente del
+// sistema queda desactivado para que no vuelva a truncarse.
+//
+// Verificado en un SM-A536E (411dp de ancho): con 10 sobrevivía "Guardad…",
+// porque cada item reserva padding horizontal propio además de la fuente. Lo
+// que entra es 9 con el padding del item en cero.
+const tabLabels: Record<keyof RootTabParamList, string> = {
+  Home: 'Inicio',
+  Explorar: 'Explorar',
+  Capturar: 'Capturar',
+  Mapa: 'Mapa',
+  Comunidad: 'Gente',
+  Guardados: 'Guardados',
+  Perfil: 'Perfil',
 };
 
 const Tab = createBottomTabNavigator<RootTabParamList>();
@@ -65,12 +74,19 @@ const CapturarTab = (): React.JSX.Element => {
 interface TabBarIconProps {
   routeName: keyof RootTabParamList;
   color: string;
+  focused: boolean;
   size: number;
 }
 
-const TabBarIcon = ({routeName, color, size}: TabBarIconProps): React.JSX.Element => (
-  <Text style={{color, fontSize: size}}>{tabIcons[routeName]}</Text>
-);
+const TabBarIcon = ({
+  routeName,
+  color,
+  focused,
+  size,
+}: TabBarIconProps): React.JSX.Element => {
+  const Icono = tabIcons[routeName];
+  return <Icono color={color} focused={focused} size={size} />;
+};
 
 export const AppNavigator = (): React.JSX.Element => {
   const {isLoading, session} = useAuth();
@@ -121,19 +137,24 @@ export const AppNavigator = (): React.JSX.Element => {
       screenOptions={({route}) => ({
         headerShown: false,
         tabBarActiveTintColor: colors.primary,
-        tabBarIcon: ({color, size}) => (
-          <TabBarIcon color={color} routeName={route.name} size={size} />
+        tabBarAllowFontScaling: false,
+        tabBarIcon: ({color, focused, size}) => (
+          <TabBarIcon
+            color={color}
+            focused={focused}
+            routeName={route.name}
+            size={size}
+          />
         ),
+        tabBarLabel: tabLabels[route.name],
+        tabBarLabelStyle: styles.tabLabel,
+        tabBarItemStyle: styles.tabItem,
         tabBarInactiveTintColor: colors.muted,
         tabBarStyle: styles.tabBar,
       })}>
       <Tab.Screen component={HomeStack} name="Home" />
       <Tab.Screen component={ExplorarStack} name="Explorar" />
-      <Tab.Screen
-        component={CapturarTab}
-        name="Capturar"
-        options={{tabBarLabel: 'Capturar'}}
-      />
+      <Tab.Screen component={CapturarTab} name="Capturar" />
       <Tab.Screen component={MapaScreen} name="Mapa" />
       <Tab.Screen component={ComunidadStackNavigator} name="Comunidad" />
       <Tab.Screen component={GuardadosStack} name="Guardados" />
@@ -152,6 +173,13 @@ const styles = StyleSheet.create({
   loadingText: {
     color: colors.muted,
     marginTop: 12,
+  },
+  tabLabel: {
+    fontSize: 9,
+    letterSpacing: -0.3,
+  },
+  tabItem: {
+    paddingHorizontal: 0,
   },
   tabBar: {
     backgroundColor: colors.surface,

@@ -17,6 +17,7 @@ import type {Reino} from '../types/domain';
 import type {AreaProtegida, CeldaMapa} from '../types/mapa';
 import {
   esPuntoCaliente,
+  plural,
   radioCeldaMetros,
   regionToBbox,
   regionToZoom,
@@ -192,13 +193,17 @@ export const MapaScreen = (): React.JSX.Element => {
                   }}
                   title={
                     caliente
-                      ? `Punto caliente: ${celda.total} registros`
-                      : `${celda.total} encuentros`
+                      ? `Punto caliente: ${plural(celda.total, 'registro', 'registros')}`
+                      : plural(celda.total, 'encuentro', 'encuentros')
                   }
                   description={
                     celda.sensible
                       ? 'Especie amenazada: la ubicación se muestra aproximada.'
-                      : `${celda.especies_distintas} especie(s) en esta zona`
+                      : `${plural(
+                          celda.especies_distintas,
+                          'especie',
+                          'especies',
+                        )} en esta zona`
                   }
                 />
               </React.Fragment>
