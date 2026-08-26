@@ -7,6 +7,15 @@ export interface LocationResult {
   accuracyMeters: number | null;
 }
 
+// Consulta sin diálogo: sirve para saber si se puede pintar el punto azul del
+// mapa al abrirlo, sin interrumpir a nadie con un permiso que no pidió.
+export const hasLocationPermission = async (): Promise<boolean> => {
+  if (Platform.OS !== 'android') {
+    return true;
+  }
+  return PermissionsAndroid.check(PermissionsAndroid.PERMISSIONS.ACCESS_FINE_LOCATION);
+};
+
 export const requestLocationPermission = async (): Promise<boolean> => {
   if (Platform.OS !== 'android') {
     return true;

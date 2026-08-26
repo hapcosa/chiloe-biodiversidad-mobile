@@ -3,6 +3,7 @@ import {
   esPuntoCaliente,
   plural,
   radioCeldaMetros,
+  regionDeUbicacion,
   regionToBbox,
   regionToZoom,
   regionesEquivalentes,
@@ -139,5 +140,36 @@ describe('plural', () => {
   it('usa el plural con cero y con más de uno', () => {
     expect(plural(0, 'encuentro', 'encuentros')).toBe('0 encuentros');
     expect(plural(4, 'especie', 'especies')).toBe('4 especies');
+  });
+});
+
+describe('regionDeUbicacion', () => {
+  const chiloeEntero = {
+    latitude: -42.62,
+    longitude: -73.85,
+    latitudeDelta: 1.6,
+    longitudeDelta: 1.6,
+  };
+
+  it('acerca cuando el mapa venía mostrando la isla entera', () => {
+    const region = regionDeUbicacion(-41.87, -73.82, chiloeEntero);
+    expect(region.latitude).toBe(-41.87);
+    expect(region.longitude).toBe(-73.82);
+    expect(region.latitudeDelta).toBe(0.1);
+    expect(region.longitudeDelta).toBe(0.1);
+  });
+
+  it('conserva la escala si ya se estaba mirando de cerca', () => {
+    const cerca = {...chiloeEntero, latitudeDelta: 0.01, longitudeDelta: 0.02};
+    const region = regionDeUbicacion(-41.87, -73.82, cerca);
+    expect(region.latitudeDelta).toBe(0.01);
+    expect(region.longitudeDelta).toBe(0.02);
+  });
+
+  it('no devuelve deltas negativos aunque el mapa entregue uno', () => {
+    const raro = {...chiloeEntero, latitudeDelta: -0.01, longitudeDelta: -0.02};
+    const region = regionDeUbicacion(-41.87, -73.82, raro);
+    expect(region.latitudeDelta).toBe(0.01);
+    expect(region.longitudeDelta).toBe(0.02);
   });
 });
