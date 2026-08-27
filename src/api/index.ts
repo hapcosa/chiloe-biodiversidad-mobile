@@ -4,6 +4,7 @@ import {AvistamientosApi} from './avistamientosApi';
 import {AuthApi} from './authApi';
 import {CategoriasApi} from './categoriasApi';
 import {IdentificacionesApi} from './identificacionesApi';
+import {InsigniasApi} from './insigniasApi';
 import {MapaApi} from './mapaApi';
 import {PortadaApi} from './portadaApi';
 import {PostulacionesApi} from './postulacionesApi';
@@ -40,4 +41,5 @@ export const mapaApi = new MapaApi(apiClient);
 export const portadaApi = new PortadaApi(apiClient);
 export const categoriasApi = new CategoriasApi(apiClient);
 export const postulacionesApi = new PostulacionesApi(apiClient);
+export const insigniasApi = new InsigniasApi(apiClient);
 
