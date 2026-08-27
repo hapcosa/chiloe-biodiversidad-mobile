@@ -1,12 +1,13 @@
 import React, {useCallback, useEffect, useState} from 'react';
 import {ActivityIndicator, Image, Pressable, ScrollView, StyleSheet, Text, View} from 'react-native';
-import {avistamientosApi} from '../api';
+import {avistamientosApi, insigniasApi} from '../api';
 import {useAuth} from '../auth/AuthContext';
 import {initializeDatabase} from '../db/connection';
 import {getCachedSpecies, getLibraryStats} from '../db/speciesCache';
 import {countEncuentros, listLocalAvistamientos} from '../db/mutationQueue';
 import {listSavedSpeciesIds} from '../db/savedSpecies';
 import {listViewedSpeciesIds} from '../db/speciesViewed';
+import {InsigniasLista} from '../components/Insignias';
 import type {CameraCapture} from '../native/ChiloeCamera';
 import {uploadLocalPhotoPublicUrl} from '../native/photoUpload';
 import {shareEncuentroToStory} from '../native/socialShare';
@@ -14,6 +15,8 @@ import {colors, spacing} from '../styles/theme';
 import {runInitialSpeciesSync} from '../sync/initialSync';
 import {CameraScreen} from './CameraScreen';
 import type {LocalAvistamiento} from '../types/avistamiento';
+import type {Insignia, InsigniaOtorgada} from '../types/insignia';
+import {insigniasPendientes} from '../utils/insignias';
 
 interface PerfilScreenProps {
   onOpenCamera: () => void;
@@ -62,6 +65,8 @@ export const PerfilScreen = ({
   const [sharingId, setSharingId] = useState<string | null>(null);
   const [socialSharingId, setSocialSharingId] = useState<string | null>(null);
   const [socialShareError, setSocialShareError] = useState<string | null>(null);
+  const [insignias, setInsignias] = useState<InsigniaOtorgada[]>([]);
+  const [catalogoInsignias, setCatalogoInsignias] = useState<Insignia[]>([]);
   const [stats, setStats] = useState<ExploradorStats>({
     encuentros: 0,
     especiesConEncuentro: 0,
@@ -70,6 +75,22 @@ export const PerfilScreen = ({
     reinos: 0,
     totalEspecies: 0,
   });
+
+  // Sin bloquear la pantalla: si el backend no responde, el perfil se ve igual
+  // y la sección de insignias simplemente queda vacía.
+  const loadInsignias = useCallback(async () => {
+    try {
+      const [mias, catalogo] = await Promise.all([
+        insigniasApi.mias(),
+        insigniasApi.catalogo(),
+      ]);
+      setInsignias(mias);
+      setCatalogoInsignias(catalogo);
+    } catch {
+      setInsignias([]);
+      setCatalogoInsignias([]);
+    }
+  }, []);
 
   const loadEncuentros = useCallback(async () => {
     const local = await listLocalAvistamientos();
@@ -115,7 +136,8 @@ export const PerfilScreen = ({
   useEffect(() => {
     void loadEncuentros();
     void loadStats();
-  }, [loadEncuentros, loadStats]);
+    void loadInsignias();
+  }, [loadEncuentros, loadInsignias, loadStats]);
 
   const compartir = async (encuentro: EncuentroConNombre): Promise<void> => {
     if (!encuentro.remote_id) {
@@ -264,6 +286,19 @@ export const PerfilScreen = ({
       <Text style={styles.progressCaption}>
         Fichas consultadas: {stats.fichasConsultadas}.
       </Text>
+
+      <View style={styles.sectionHeader}>
+        <Text style={styles.sectionTitle}>Insignias</Text>
+        <Text style={styles.sectionSubtitle}>
+          Reconocen constancia y variedad. No hay tabla de posiciones.
+        </Text>
+      </View>
+      <View style={styles.insigniasCard}>
+        <InsigniasLista
+          ganadas={insignias}
+          pendientes={insigniasPendientes(catalogoInsignias, insignias)}
+        />
+      </View>
 
       <View style={styles.tipCard}>
         <Text style={styles.tipText}>
@@ -544,6 +579,14 @@ const styles = StyleSheet.create({
     color: colors.muted,
     fontSize: 13,
     marginTop: spacing.sm,
+  },
+  insigniasCard: {
+    backgroundColor: colors.surface,
+    borderColor: colors.border,
+    borderRadius: 18,
+    borderWidth: 1,
+    marginBottom: spacing.md,
+    padding: spacing.lg,
   },
   tipCard: {
     backgroundColor: `${colors.secondary}1A`,

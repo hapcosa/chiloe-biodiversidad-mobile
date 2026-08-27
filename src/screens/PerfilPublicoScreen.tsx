@@ -1,8 +1,10 @@
 import React, {useCallback, useEffect, useState} from 'react';
 import {ActivityIndicator, Image, Pressable, ScrollView, StyleSheet, Text, View} from 'react-native';
-import {authApi} from '../api';
+import {authApi, insigniasApi} from '../api';
+import {InsigniasRow} from '../components/Insignias';
 import {colors, spacing} from '../styles/theme';
 import type {UserPerfilPublico} from '../types/domain';
+import type {InsigniaOtorgada} from '../types/insignia';
 
 interface PerfilPublicoScreenProps {
   usuarioId: number;
@@ -21,6 +23,7 @@ export const PerfilPublicoScreen = ({
   onBack,
 }: PerfilPublicoScreenProps): React.JSX.Element => {
   const [perfil, setPerfil] = useState<UserPerfilPublico | null>(null);
+  const [insignias, setInsignias] = useState<InsigniaOtorgada[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [noDisponible, setNoDisponible] = useState(false);
 
@@ -29,6 +32,13 @@ export const PerfilPublicoScreen = ({
     setNoDisponible(false);
     try {
       setPerfil(await authApi.perfilPublico(usuarioId));
+      // En paralelo no: si el perfil no está publicado no hay nada que
+      // acompañar, y las insignias de alguien invisible tampoco se muestran.
+      try {
+        setInsignias(await insigniasApi.deUsuario(usuarioId));
+      } catch {
+        setInsignias([]);
+      }
     } catch {
       // La API responde 404 tanto si la persona no existe como si no publicó
       // su perfil, a propósito: no hay nada que distinguir para quien mira.
@@ -76,6 +86,7 @@ export const PerfilPublicoScreen = ({
               {perfil.profesion ? (
                 <Text style={styles.profesion}>{perfil.profesion}</Text>
               ) : null}
+              <InsigniasRow insignias={insignias} />
             </View>
           </View>
 
