@@ -19,6 +19,7 @@ interface PerfilScreenProps {
   onOpenCamera: () => void;
   onOpenAvistamiento: (avistamientoId: number) => void;
   onEditProfile: () => void;
+  onPostularCurador: () => void;
 }
 
 interface EncuentroConNombre extends LocalAvistamiento {
@@ -49,6 +50,7 @@ export const PerfilScreen = ({
   onEditProfile,
   onOpenAvistamiento,
   onOpenCamera,
+  onPostularCurador,
 }: PerfilScreenProps): React.JSX.Element => {
   const {logout, refreshProfile, updateAvatar, user} = useAuth();
   const [syncStatus, setSyncStatus] = useState<string | null>(null);
@@ -295,6 +297,13 @@ export const PerfilScreen = ({
 
       <Pressable accessibilityRole="button" onPress={onOpenCamera} style={styles.secondaryButton}>
         <Text style={styles.secondaryButtonText}>Probar cámara NDK</Text>
+      </Pressable>
+
+      <Pressable
+        accessibilityRole="button"
+        onPress={onPostularCurador}
+        style={styles.secondaryButton}>
+        <Text style={styles.secondaryButtonText}>Postularme a curador</Text>
       </Pressable>
 
       <View style={styles.sectionHeader}>

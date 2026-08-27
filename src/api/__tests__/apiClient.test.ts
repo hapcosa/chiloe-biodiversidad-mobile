@@ -82,3 +82,33 @@ describe('ApiClient · manejo del 401', () => {
     expect(onUnauthorized).not.toHaveBeenCalled();
   });
 });
+
+describe('ApiClient · mensaje de error', () => {
+  const client = new ApiClient({
+    baseUrl: 'https://api.example.com',
+    timeoutMs: 1000,
+    getAccessToken: () => null,
+  });
+
+  it('usa el `error` de la especies-api, no un HTTP pelado', async () => {
+    mockFetch.mockResolvedValueOnce(
+      jsonResponse(400, {success: false, error: 'categoría no encontrada'}),
+    );
+
+    await expect(client.get('/api/v1/postulaciones')).rejects.toThrow(
+      'categoría no encontrada',
+    );
+  });
+
+  it('sigue prefiriendo el `message` del auth-service', async () => {
+    mockFetch.mockResolvedValueOnce(jsonResponse(400, {message: 'email inválido'}));
+
+    await expect(client.get('/api/v1/auth/whoami')).rejects.toThrow('email inválido');
+  });
+
+  it('cae al código HTTP cuando el cuerpo no explica nada', async () => {
+    mockFetch.mockResolvedValueOnce(jsonResponse(503, {success: false}));
+
+    await expect(client.get('/api/v1/especies')).rejects.toThrow('HTTP 503');
+  });
+});
