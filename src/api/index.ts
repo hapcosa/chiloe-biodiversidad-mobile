@@ -6,6 +6,7 @@ import {CategoriasApi} from './categoriasApi';
 import {IdentificacionesApi} from './identificacionesApi';
 import {MapaApi} from './mapaApi';
 import {PortadaApi} from './portadaApi';
+import {PostulacionesApi} from './postulacionesApi';
 import {SpeciesApi} from './speciesApi';
 import {UploadsApi} from './uploadsApi';
 
@@ -38,4 +39,5 @@ export const identificacionesApi = new IdentificacionesApi(apiClient);
 export const mapaApi = new MapaApi(apiClient);
 export const portadaApi = new PortadaApi(apiClient);
 export const categoriasApi = new CategoriasApi(apiClient);
+export const postulacionesApi = new PostulacionesApi(apiClient);
 

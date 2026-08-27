@@ -5,11 +5,13 @@ import {CameraScreen} from '../screens/CameraScreen';
 import {EditarPerfilScreen} from '../screens/EditarPerfilScreen';
 import {PerfilPublicoScreen} from '../screens/PerfilPublicoScreen';
 import {PerfilScreen} from '../screens/PerfilScreen';
+import {PostularCuradorScreen} from '../screens/PostularCuradorScreen';
 
 type PerfilStackParamList = {
   PerfilHome: undefined;
   Camara: undefined;
   EditarPerfil: undefined;
+  PostularCurador: undefined;
   PerfilPublico: {usuarioId: number};
   AvistamientoDetalle: {avistamientoId: number};
 };
@@ -26,6 +28,7 @@ export const PerfilStackNavigator = (): React.JSX.Element => (
             navigation.navigate('AvistamientoDetalle', {avistamientoId})
           }
           onOpenCamera={() => navigation.navigate('Camara')}
+          onPostularCurador={() => navigation.navigate('PostularCurador')}
         />
       )}
     </Stack.Screen>
@@ -38,6 +41,11 @@ export const PerfilStackNavigator = (): React.JSX.Element => (
           onBack={() => navigation.goBack()}
           onSaved={() => navigation.goBack()}
         />
+      )}
+    </Stack.Screen>
+    <Stack.Screen name="PostularCurador">
+      {({navigation}) => (
+        <PostularCuradorScreen onBack={() => navigation.goBack()} />
       )}
     </Stack.Screen>
     <Stack.Screen name="PerfilPublico">

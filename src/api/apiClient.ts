@@ -34,6 +34,20 @@ const parseResponseBody = async <T>(response: Response): Promise<T> => {
   }
 };
 
+// El auth-service (Go) manda `message`; la especies-api (C++), `error`. Sin
+// mirar los dos, motivos accionables como "ya tienes una postulación pendiente
+// para esta categoría" llegaban a la pantalla como un "HTTP 400" pelado.
+const extractErrorMessage = (payload: unknown, status: number): string => {
+  if (typeof payload === 'object' && payload !== null) {
+    const cuerpo = payload as {message?: unknown; error?: unknown};
+    const detalle = cuerpo.message ?? cuerpo.error;
+    if (typeof detalle === 'string' && detalle.trim() !== '') {
+      return detalle;
+    }
+  }
+  return `HTTP ${status}`;
+};
+
 export const buildQueryString = (
   params: Record<string, string | number | boolean | undefined | null>,
 ): string => {
@@ -99,11 +113,7 @@ export class ApiClient {
           this.onUnauthorized?.();
         }
 
-        const message =
-          typeof payload === 'object' && payload !== null && 'message' in payload
-            ? String((payload as {message?: unknown}).message)
-            : `HTTP ${response.status}`;
-        throw new ApiError(message, response.status, payload);
+        throw new ApiError(extractErrorMessage(payload, response.status), response.status, payload);
       }
 
       return payload;
