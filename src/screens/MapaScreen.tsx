@@ -191,12 +191,12 @@ const HojaCelda = ({
     )}
 
     {especie === null ? (
-      // Sin especie dominante resuelta no hay nada que filtrar ni que abrir: o
-      // la celda mezcla especies sin una que mande, o la ficha todavía no está
-      // en el cache local.
+      // Sin especie no hay nada que filtrar ni que abrir. El servidor deja el
+      // dominante en null exactamente cuando ningún encuentro de la celda está
+      // identificado, así que ese caso se puede nombrar por lo que es.
       <Text style={styles.hojaSinEspecie}>
         {celda.especie_dominante_id === null
-          ? 'Sin una especie que predomine en esta zona.'
+          ? 'Todavía nadie identificó los encuentros de esta zona.'
           : 'La ficha de esta especie todavía no está descargada.'}
       </Text>
     ) : (

@@ -197,6 +197,12 @@ describe('resumenCelda', () => {
     );
   });
 
+  it('no dice "0 especies" cuando nadie identifico nada', () => {
+    expect(resumenCelda(celda({total: 2, especies_distintas: 0}))).toBe(
+      '2 encuentros · sin identificar',
+    );
+  });
+
   it('respeta el singular', () => {
     expect(resumenCelda(celda({total: 1, especies_distintas: 1}))).toBe(
       '1 encuentro · 1 especie',

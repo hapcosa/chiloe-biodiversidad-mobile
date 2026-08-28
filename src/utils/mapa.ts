@@ -113,13 +113,17 @@ export const tituloCelda = (celda: CeldaMapa): string =>
 // Línea de conteos de la hoja. En un punto caliente todos los registros son de
 // la misma especie, así que contar especies distintas ahí sobra y encima
 // diría siempre "1 especie".
+//
+// El servidor cuenta como especie distinta solo el encuentro que tiene una
+// asignada, así que una zona donde nadie identificó nada devuelve 0 y decir
+// "1 encuentro · 0 especies" sonaba a error de cálculo.
 export const resumenCelda = (celda: CeldaMapa): string => {
   if (esPuntoCaliente(celda)) {
     return plural(celda.total, 'registro', 'registros');
   }
-  return `${plural(celda.total, 'encuentro', 'encuentros')} · ${plural(
-    celda.especies_distintas,
-    'especie',
-    'especies',
-  )}`;
+  const encuentros = plural(celda.total, 'encuentro', 'encuentros');
+  if (celda.especies_distintas === 0) {
+    return `${encuentros} · sin identificar`;
+  }
+  return `${encuentros} · ${plural(celda.especies_distintas, 'especie', 'especies')}`;
 };
