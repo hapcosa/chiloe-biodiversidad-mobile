@@ -1,4 +1,4 @@
-import type {BoundingBox, CeldaMapa} from '../types/mapa';
+import type {BoundingBox, CeldaMapa, LatLngLike} from '../types/mapa';
 
 export interface RegionLike {
   latitude: number;
@@ -67,12 +67,46 @@ export const esPuntoCaliente = (celda: CeldaMapa): boolean =>
   celda.especies_distintas === 1 &&
   celda.especie_dominante_id !== null;
 
+const METROS_POR_GRADO_LAT = 111_320;
+
 // Radio del círculo con que se pinta una celda, en metros. Se deriva del lado
 // real de la celda para no sugerir más precisión de la que hay.
-export const radioCeldaMetros = (celda: CeldaMapa): number => {
-  const metrosPorGradoLat = 111_320;
-  return (celda.grados * metrosPorGradoLat) / 2;
+export const radioCeldaMetros = (celda: CeldaMapa): number =>
+  (celda.grados * METROS_POR_GRADO_LAT) / 2;
+
+// Con menos lados el borde se ve como un polígono; con más, cada celda cuesta
+// vértices sin que la diferencia se note en pantalla.
+export const LADOS_CELDA = 48;
+
+// El `Circle` de react-native-maps no se puede tocar: `MapCircleManager` no
+// declara la prop `tappable` y `MapView` no registra un `OnCircleClickListener`,
+// así que el tap nunca llega a JS. El `Polygon` sí lo hace de punta a punta, y
+// por eso la celda se dibuja como un polígono de muchos lados que a simple
+// vista es un círculo.
+export const verticesCirculo = (
+  lat: number,
+  lng: number,
+  radioMetros: number,
+  lados: number = LADOS_CELDA,
+): LatLngLike[] => {
+  const deltaLat = radioMetros / METROS_POR_GRADO_LAT;
+  // Un grado de longitud mide menos cuanto más lejos del ecuador; sin corregir,
+  // el círculo saldría achatado. El piso del coseno solo evita dividir por cero
+  // en los polos, donde no hay nada que mostrar.
+  const deltaLng = deltaLat / Math.max(Math.abs(Math.cos((lat * Math.PI) / 180)), 1e-6);
+
+  return Array.from({length: lados}, (_, i) => {
+    const angulo = (2 * Math.PI * i) / lados;
+    return {
+      latitude: lat + deltaLat * Math.cos(angulo),
+      longitude: normalizarLng(lng + deltaLng * Math.sin(angulo)),
+    };
+  });
 };
+
+// Una celda pegada al antimeridiano generaría vértices fuera de rango y Google
+// dibujaría el polígono dando la vuelta al mundo.
+const normalizarLng = (lng: number): number => ((((lng + 180) % 360) + 360) % 360) - 180;
 
 // "1 encuentros" delataba que los textos del mapa se arman concatenando. El
 // singular se decide por el número, no por el sustantivo.
