@@ -104,3 +104,22 @@ export const regionDeUbicacion = (
     longitudeDelta: DELTA_UBICACION_CERCANA,
   };
 };
+
+// Encabezado de la hoja de resumen. Un punto caliente merece nombrarse: es el
+// dato que alguien busca cuando abre el mapa para salir a ver algo.
+export const tituloCelda = (celda: CeldaMapa): string =>
+  esPuntoCaliente(celda) ? 'Punto caliente' : 'Zona con encuentros';
+
+// Línea de conteos de la hoja. En un punto caliente todos los registros son de
+// la misma especie, así que contar especies distintas ahí sobra y encima
+// diría siempre "1 especie".
+export const resumenCelda = (celda: CeldaMapa): string => {
+  if (esPuntoCaliente(celda)) {
+    return plural(celda.total, 'registro', 'registros');
+  }
+  return `${plural(celda.total, 'encuentro', 'encuentros')} · ${plural(
+    celda.especies_distintas,
+    'especie',
+    'especies',
+  )}`;
+};

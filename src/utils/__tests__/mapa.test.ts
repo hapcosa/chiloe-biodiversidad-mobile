@@ -2,6 +2,8 @@ import type {CeldaMapa} from '../../types/mapa';
 import {
   esPuntoCaliente,
   plural,
+  resumenCelda,
+  tituloCelda,
   radioCeldaMetros,
   regionDeUbicacion,
   regionToBbox,
@@ -171,5 +173,33 @@ describe('regionDeUbicacion', () => {
     const region = regionDeUbicacion(-41.87, -73.82, raro);
     expect(region.latitudeDelta).toBe(0.01);
     expect(region.longitudeDelta).toBe(0.02);
+  });
+});
+
+describe('tituloCelda', () => {
+  it('nombra el punto caliente', () => {
+    expect(tituloCelda(celda({total: 12}))).toBe('Punto caliente');
+  });
+
+  it('llama zona a lo que no llega a punto caliente', () => {
+    expect(tituloCelda(celda({total: 3}))).toBe('Zona con encuentros');
+  });
+});
+
+describe('resumenCelda', () => {
+  it('en un punto caliente no cuenta especies, porque siempre sería una', () => {
+    expect(resumenCelda(celda({total: 12}))).toBe('12 registros');
+  });
+
+  it('cuenta encuentros y especies en una zona común', () => {
+    expect(resumenCelda(celda({total: 3, especies_distintas: 2}))).toBe(
+      '3 encuentros · 2 especies',
+    );
+  });
+
+  it('respeta el singular', () => {
+    expect(resumenCelda(celda({total: 1, especies_distintas: 1}))).toBe(
+      '1 encuentro · 1 especie',
+    );
   });
 });
