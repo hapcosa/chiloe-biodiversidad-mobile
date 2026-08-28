@@ -269,7 +269,7 @@ export const PerfilScreen = ({
         </View>
         <View style={styles.statCard}>
           <Text style={styles.statValue}>{stats.reinos}</Text>
-          <Text style={styles.statLabel}>reinos</Text>
+          <Text style={styles.statLabel}>reinos vistos</Text>
         </View>
       </View>
 
