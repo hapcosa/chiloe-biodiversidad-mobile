@@ -59,6 +59,10 @@ const GuardadosStack = (): React.JSX.Element => (
   <SpeciesStackNavigator ListaScreen={GuardadosScreen} />
 );
 
+// El mapa entra al mismo stack que las listas porque la hoja de resumen de una
+// celda ofrece abrir la ficha de la especie que predomina ahí.
+const MapaStack = (): React.JSX.Element => <SpeciesStackNavigator ListaScreen={MapaScreen} />;
+
 // Se desmonta al perder el foco: la pestaña no se descarga sola y dejaría la
 // cámara tomada, con lo que ninguna otra pantalla podría abrirla. Desmontarla
 // también reinicia el flujo, que es lo que corresponde: una captura a medio
@@ -155,7 +159,7 @@ export const AppNavigator = (): React.JSX.Element => {
       <Tab.Screen component={HomeStack} name="Home" />
       <Tab.Screen component={ExplorarStack} name="Explorar" />
       <Tab.Screen component={CapturarTab} name="Capturar" />
-      <Tab.Screen component={MapaScreen} name="Mapa" />
+      <Tab.Screen component={MapaStack} name="Mapa" />
       <Tab.Screen component={ComunidadStackNavigator} name="Comunidad" />
       <Tab.Screen component={GuardadosStack} name="Guardados" />
       <Tab.Screen component={PerfilStackNavigator} name="Perfil" />

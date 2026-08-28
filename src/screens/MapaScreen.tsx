@@ -18,16 +18,17 @@ import {
 } from '../native/location';
 import {colors, reinoColors, reinoLabels, spacing} from '../styles/theme';
 import type {LocalAvistamiento} from '../types/avistamiento';
-import type {Reino} from '../types/domain';
+import type {Reino, Species} from '../types/domain';
 import type {AreaProtegida, CeldaMapa} from '../types/mapa';
 import {
   esPuntoCaliente,
-  plural,
   radioCeldaMetros,
   regionDeUbicacion,
   regionToBbox,
   regionToZoom,
   regionesEquivalentes,
+  resumenCelda,
+  tituloCelda,
   REGION_CHILOE,
   type RegionLike,
 } from '../utils/mapa';
@@ -88,6 +89,11 @@ interface CeldaCapaProps {
 // Memoizado: mover el mapa vuelve a renderizar la pantalla, y sin esto cada
 // gesto redibujaba un Circle y un Marker por celda. Con celdas suficientes eso
 // es lo que se siente como tirones.
+//
+// El Marker va sin `title` ni `description` a propósito: el callout nativo de
+// Google es hijo del Marker y se pierde en cuanto las celdas se recargan —al
+// mover el mapa o al filtrar—, así que lo que se toca abre la hoja de resumen,
+// que vive en el estado de la pantalla y sobrevive a eso.
 const CeldaCapa = React.memo(({celda, onPress}: CeldaCapaProps): React.JSX.Element => {
   const caliente = esPuntoCaliente(celda);
   const color = caliente ? colors.secondary : colors.primary;
@@ -101,18 +107,9 @@ const CeldaCapa = React.memo(({celda, onPress}: CeldaCapaProps): React.JSX.Eleme
         strokeWidth={caliente ? 2 : 1}
       />
       <Marker
+        accessibilityLabel={`${tituloCelda(celda)}: ${resumenCelda(celda)}`}
         coordinate={{latitude: celda.lat, longitude: celda.lng}}
         onPress={() => onPress(celda)}
-        title={
-          caliente
-            ? `Punto caliente: ${plural(celda.total, 'registro', 'registros')}`
-            : plural(celda.total, 'encuentro', 'encuentros')
-        }
-        description={
-          celda.sensible
-            ? 'Especie amenazada: la ubicación se muestra aproximada.'
-            : `${plural(celda.especies_distintas, 'especie', 'especies')} en esta zona`
-        }
       />
     </>
   );
@@ -140,7 +137,97 @@ const AreaMarcador = React.memo(
   ),
 );
 
-export const MapaScreen = (): React.JSX.Element => {
+interface HojaCeldaProps {
+  celda: CeldaMapa;
+  onLayout: (alto: number) => void;
+  especie: Species | null;
+  filtrada: boolean;
+  onAbrirFicha: (especie: Species) => void;
+  onCerrar: () => void;
+  onFiltrar: (especie: Species) => void;
+}
+
+// Hoja de resumen de la celda tocada. Reemplaza al callout nativo de Google,
+// que se perdía en cada recarga, y es el lugar donde ahora vive el aviso de
+// especie sensible: antes flotaba abajo sin decir de qué celda hablaba.
+const HojaCelda = ({
+  celda,
+  especie,
+  filtrada,
+  onAbrirFicha,
+  onCerrar,
+  onFiltrar,
+  onLayout,
+}: HojaCeldaProps): React.JSX.Element => (
+  <View
+    onLayout={evento => onLayout(evento.nativeEvent.layout.height)}
+    style={styles.hoja}>
+    <View style={styles.hojaEncabezado}>
+      <View style={styles.hojaTitulos}>
+        <Text style={styles.hojaTitulo}>{tituloCelda(celda)}</Text>
+        <Text style={styles.hojaResumen}>{resumenCelda(celda)}</Text>
+      </View>
+      <Pressable
+        accessibilityLabel="Cerrar el resumen"
+        accessibilityRole="button"
+        hitSlop={12}
+        onPress={onCerrar}
+        style={styles.hojaCerrar}>
+        <Text style={styles.hojaCerrarTexto}>✕</Text>
+      </Pressable>
+    </View>
+
+    {especie !== null && (
+      <Text style={styles.hojaEspecie}>
+        Más vista acá: {especie.nombre_comun || especie.nombre_cientifico}
+      </Text>
+    )}
+
+    {celda.sensible && (
+      <Text style={styles.hojaAviso}>
+        Esta especie está amenazada. Su ubicación se muestra aproximada a propósito, para no
+        facilitar su captura ni la presión de visitantes.
+      </Text>
+    )}
+
+    {especie === null ? (
+      // Sin especie dominante resuelta no hay nada que filtrar ni que abrir: o
+      // la celda mezcla especies sin una que mande, o la ficha todavía no está
+      // en el cache local.
+      <Text style={styles.hojaSinEspecie}>
+        {celda.especie_dominante_id === null
+          ? 'Sin una especie que predomine en esta zona.'
+          : 'La ficha de esta especie todavía no está descargada.'}
+      </Text>
+    ) : (
+      <View style={styles.hojaAcciones}>
+        <Pressable
+          accessibilityRole="button"
+          disabled={filtrada}
+          onPress={() => onFiltrar(especie)}
+          style={[styles.hojaBoton, filtrada && styles.hojaBotonInactivo]}>
+          <Text style={[styles.hojaBotonTexto, filtrada && styles.hojaBotonTextoInactivo]}>
+            {filtrada ? 'Ya estás viendo solo esta especie' : 'Ver solo esta especie'}
+          </Text>
+        </Pressable>
+        <Pressable
+          accessibilityRole="button"
+          onPress={() => onAbrirFicha(especie)}
+          style={[styles.hojaBoton, styles.hojaBotonPrimario]}>
+          <Text style={[styles.hojaBotonTexto, styles.hojaBotonTextoPrimario]}>
+            Abrir la ficha
+          </Text>
+        </Pressable>
+      </View>
+    )}
+  </View>
+);
+
+interface MapaScreenProps {
+  onSelectSpecies: (species: Species) => void;
+}
+
+export const MapaScreen = ({onSelectSpecies}: MapaScreenProps): React.JSX.Element => {
   const [celdas, setCeldas] = useState<CeldaMapa[]>([]);
   const [mios, setMios] = useState<LocalAvistamiento[]>([]);
   const [cargando, setCargando] = useState(false);
@@ -153,6 +240,10 @@ export const MapaScreen = (): React.JSX.Element => {
   const [especieId, setEspecieId] = useState<number | null>(null);
   const [nombreEspecie, setNombreEspecie] = useState<string | null>(null);
   const [seleccion, setSeleccion] = useState<CeldaMapa | null>(null);
+  const [especieDeSeleccion, setEspecieDeSeleccion] = useState<Species | null>(null);
+  // La hoja crece o se achica según lo que tenga que decir, así que el botón de
+  // ubicación se corre midiendo la hoja en vez de con un número inventado.
+  const [altoHoja, setAltoHoja] = useState(0);
   const [ubicando, setUbicando] = useState(false);
   const [verMiUbicacion, setVerMiUbicacion] = useState(false);
 
@@ -248,23 +339,36 @@ export const MapaScreen = (): React.JSX.Element => {
     setNombreEspecie(null);
   }, []);
 
-  // Filtrar por especie desde el mapa: se toca un punto caliente y el mapa
-  // pasa a mostrar solo esa especie.
-  const filtrarPorCelda = useCallback(async (celda: CeldaMapa) => {
+  const cerrarHoja = useCallback(() => {
+    setSeleccion(null);
+    setEspecieDeSeleccion(null);
+  }, []);
+
+  // Tocar una celda solo abre su resumen. Filtrar recarga las celdas y desmonta
+  // los Marker, así que hacerlo en el mismo gesto dejaba al usuario sin ver
+  // nunca de qué zona hablaba: ahora el filtro es una acción aparte de la hoja.
+  const onCeldaPress = useCallback((celda: CeldaMapa) => {
     setSeleccion(celda);
+    setEspecieDeSeleccion(null);
     if (celda.especie_dominante_id === null) {
       return;
     }
-    const especie = await getCachedSpecies(celda.especie_dominante_id);
-    setEspecieId(celda.especie_dominante_id);
-    setNombreEspecie(especie?.nombre_comun ?? `Especie #${celda.especie_dominante_id}`);
+    void getCachedSpecies(celda.especie_dominante_id).then(especie => {
+      setEspecieDeSeleccion(especie);
+    });
   }, []);
 
-  const onCeldaPress = useCallback(
-    (celda: CeldaMapa) => {
-      void filtrarPorCelda(celda);
+  const filtrarPorEspecie = useCallback((especie: Species) => {
+    setEspecieId(especie.id);
+    setNombreEspecie(especie.nombre_comun || especie.nombre_cientifico);
+  }, []);
+
+  const abrirFicha = useCallback(
+    (especie: Species) => {
+      cerrarHoja();
+      onSelectSpecies(especie);
     },
-    [filtrarPorCelda],
+    [cerrarHoja, onSelectSpecies],
   );
 
   const miosVisibles = useMemo(
@@ -352,7 +456,10 @@ export const MapaScreen = (): React.JSX.Element => {
         onPress={() => {
           void irAMiUbicacion();
         }}
-        style={styles.botonUbicacion}>
+        style={[
+          styles.botonUbicacion,
+          seleccion !== null && {bottom: altoHoja + spacing.md},
+        ]}>
         {ubicando ? (
           <ActivityIndicator color={colors.primary} size="small" />
         ) : (
@@ -372,32 +479,107 @@ export const MapaScreen = (): React.JSX.Element => {
         </View>
       )}
 
-      {seleccion?.sensible === true && (
-        <View style={styles.avisoSensible}>
-          <Text style={styles.avisoSensibleTexto}>
-            Esta especie está amenazada. Su ubicación se muestra aproximada a propósito, para no
-            facilitar su captura ni la presión de visitantes.
-          </Text>
-        </View>
+      {seleccion !== null && (
+        <HojaCelda
+          celda={seleccion}
+          especie={especieDeSeleccion}
+          filtrada={especieDeSeleccion !== null && especieId === especieDeSeleccion.id}
+          onAbrirFicha={abrirFicha}
+          onCerrar={cerrarHoja}
+          onFiltrar={filtrarPorEspecie}
+          onLayout={setAltoHoja}
+        />
       )}
     </View>
   );
 };
 
 const styles = StyleSheet.create({
-  avisoSensible: {
+  hoja: {
     backgroundColor: colors.surface,
-    borderRadius: 8,
-    bottom: spacing.lg,
-    left: spacing.lg,
-    padding: spacing.md,
+    borderTopLeftRadius: 16,
+    borderTopRightRadius: 16,
+    bottom: 0,
+    elevation: 8,
+    left: 0,
+    padding: spacing.lg,
     position: 'absolute',
-    right: spacing.lg,
+    right: 0,
   },
-  avisoSensibleTexto: {
+  hojaAcciones: {
+    flexDirection: 'row',
+    gap: spacing.sm,
+    marginTop: spacing.md,
+  },
+  hojaAviso: {
     color: colors.text,
     fontSize: 13,
+    marginTop: spacing.sm,
   },
+  hojaBoton: {
+    alignItems: 'center',
+    borderColor: colors.primary,
+    borderRadius: 10,
+    borderWidth: 1,
+    flex: 1,
+    justifyContent: 'center',
+    minHeight: 44,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.sm,
+  },
+  hojaBotonInactivo: {
+    borderColor: colors.border,
+  },
+  hojaBotonPrimario: {
+    backgroundColor: colors.primary,
+  },
+  hojaBotonTexto: {
+    color: colors.primary,
+    fontSize: 13,
+    fontWeight: '600',
+    textAlign: 'center',
+  },
+  hojaBotonTextoInactivo: {
+    color: colors.muted,
+  },
+  hojaBotonTextoPrimario: {
+    color: colors.surface,
+  },
+  hojaCerrar: {
+    paddingHorizontal: spacing.xs,
+  },
+  hojaCerrarTexto: {
+    color: colors.muted,
+    fontSize: 18,
+  },
+  hojaEncabezado: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+  },
+  hojaEspecie: {
+    color: colors.text,
+    fontSize: 14,
+    marginTop: spacing.xs,
+  },
+  hojaResumen: {
+    color: colors.muted,
+    fontSize: 13,
+    marginTop: 2,
+  },
+  hojaSinEspecie: {
+    color: colors.muted,
+    fontSize: 13,
+    marginTop: spacing.md,
+  },
+  hojaTitulo: {
+    color: colors.primaryDark,
+    fontSize: 17,
+    fontWeight: '700',
+  },
+  hojaTitulos: {
+    flex: 1,
+  },
+
   botonUbicacion: {
     alignItems: 'center',
     backgroundColor: colors.surface,
