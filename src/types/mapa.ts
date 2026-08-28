@@ -23,6 +23,14 @@ export interface CeldaMapaResponse {
   zoom: number;
 }
 
+// Un vértice del polígono con que se dibuja una celda. Coincide con el `LatLng`
+// de react-native-maps, pero no se importa de ahí para no atar los tipos del
+// dominio a la librería del mapa.
+export interface LatLngLike {
+  latitude: number;
+  longitude: number;
+}
+
 export interface BoundingBox {
   min_lat: number;
   min_lng: number;

@@ -7,7 +7,7 @@ import {
   Text,
   View,
 } from 'react-native';
-import MapView, {Circle, MapType, Marker, PROVIDER_GOOGLE} from 'react-native-maps';
+import MapView, {MapType, Marker, Polygon, PROVIDER_GOOGLE} from 'react-native-maps';
 import {mapaApi} from '../api';
 import {getCachedSpecies} from '../db/speciesCache';
 import {listLocalAvistamientos} from '../db/mutationQueue';
@@ -29,6 +29,7 @@ import {
   regionesEquivalentes,
   resumenCelda,
   tituloCelda,
+  verticesCirculo,
   REGION_CHILOE,
   type RegionLike,
 } from '../utils/mapa';
@@ -87,31 +88,33 @@ interface CeldaCapaProps {
 }
 
 // Memoizado: mover el mapa vuelve a renderizar la pantalla, y sin esto cada
-// gesto redibujaba un Circle y un Marker por celda. Con celdas suficientes eso
-// es lo que se siente como tirones.
+// gesto redibujaba la celda entera. Con celdas suficientes eso es lo que se
+// siente como tirones.
 //
-// El Marker va sin `title` ni `description` a propósito: el callout nativo de
-// Google es hijo del Marker y se pierde en cuanto las celdas se recargan —al
-// mover el mapa o al filtrar—, así que lo que se toca abre la hoja de resumen,
-// que vive en el estado de la pantalla y sobrevive a eso.
+// La celda se dibuja como un polígono y no como una chincheta porque el punto
+// que devuelve el servidor no es un lugar: es el centro de una celda de la
+// rejilla, y esa celda se redefine con el zoom, así que el centro salta aunque
+// el encuentro no se haya movido. Una chincheta de Google significa "acá, en
+// este punto"; el área dice la verdad, y encima cambia de tamaño con el zoom,
+// que es como cambia la precisión real.
 const CeldaCapa = React.memo(({celda, onPress}: CeldaCapaProps): React.JSX.Element => {
   const caliente = esPuntoCaliente(celda);
   const color = caliente ? colors.secondary : colors.primary;
+  const vertices = useMemo(
+    () => verticesCirculo(celda.lat, celda.lng, radioCeldaMetros(celda)),
+    [celda],
+  );
+
   return (
-    <>
-      <Circle
-        center={{latitude: celda.lat, longitude: celda.lng}}
-        fillColor={`${color}55`}
-        radius={radioCeldaMetros(celda)}
-        strokeColor={color}
-        strokeWidth={caliente ? 2 : 1}
-      />
-      <Marker
-        accessibilityLabel={`${tituloCelda(celda)}: ${resumenCelda(celda)}`}
-        coordinate={{latitude: celda.lat, longitude: celda.lng}}
-        onPress={() => onPress(celda)}
-      />
-    </>
+    <Polygon
+      accessibilityLabel={`${tituloCelda(celda)}: ${resumenCelda(celda)}`}
+      coordinates={vertices}
+      fillColor={`${color}55`}
+      onPress={() => onPress(celda)}
+      strokeColor={color}
+      strokeWidth={caliente ? 2 : 1}
+      tappable
+    />
   );
 });
 

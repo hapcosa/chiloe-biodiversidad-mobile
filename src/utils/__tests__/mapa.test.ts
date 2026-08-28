@@ -9,6 +9,8 @@ import {
   regionToBbox,
   regionToZoom,
   regionesEquivalentes,
+  verticesCirculo,
+  LADOS_CELDA,
 } from '../mapa';
 
 const celda = (overrides: Partial<CeldaMapa> = {}): CeldaMapa => ({
@@ -207,5 +209,54 @@ describe('resumenCelda', () => {
     expect(resumenCelda(celda({total: 1, especies_distintas: 1}))).toBe(
       '1 encuentro · 1 especie',
     );
+  });
+});
+
+describe('verticesCirculo', () => {
+  const RADIO = 1_000;
+  const METROS_POR_GRADO_LAT = 111_320;
+
+  it('devuelve tantos vertices como lados', () => {
+    expect(verticesCirculo(-42.6, -73.9, RADIO)).toHaveLength(LADOS_CELDA);
+    expect(verticesCirculo(-42.6, -73.9, RADIO, 8)).toHaveLength(8);
+  });
+
+  it('no repite el primer vertice al cerrar: Google cierra el poligono solo', () => {
+    const vertices = verticesCirculo(-42.6, -73.9, RADIO, 8);
+    expect(vertices[0]).not.toEqual(vertices[vertices.length - 1]);
+  });
+
+  it('deja todos los vertices a la misma distancia del centro', () => {
+    const lat = -42.6;
+    const lng = -73.9;
+    const cos = Math.cos((lat * Math.PI) / 180);
+    const distancias = verticesCirculo(lat, lng, RADIO, 16).map(v => {
+      const dLat = (v.latitude - lat) * METROS_POR_GRADO_LAT;
+      const dLng = (v.longitude - lng) * METROS_POR_GRADO_LAT * cos;
+      return Math.sqrt(dLat * dLat + dLng * dLng);
+    });
+    distancias.forEach(distancia => expect(distancia).toBeCloseTo(RADIO, 3));
+  });
+
+  it('corrige la longitud por latitud: sin eso el circulo saldria achatado', () => {
+    const [norte, este] = verticesCirculo(-42.6, -73.9, RADIO, 4);
+    const deltaLat = Math.abs((norte?.latitude ?? 0) - -42.6);
+    const deltaLng = Math.abs((este?.longitude ?? 0) - -73.9);
+    expect(deltaLng).toBeGreaterThan(deltaLat);
+  });
+
+  it('normaliza la longitud al cruzar el antimeridiano', () => {
+    const vertices = verticesCirculo(0, 179.999, 100_000, 8);
+    vertices.forEach(v => {
+      expect(v.longitude).toBeGreaterThanOrEqual(-180);
+      expect(v.longitude).toBeLessThanOrEqual(180);
+    });
+  });
+
+  it('no divide por cero en el polo', () => {
+    verticesCirculo(90, 0, RADIO, 8).forEach(v => {
+      expect(Number.isFinite(v.latitude)).toBe(true);
+      expect(Number.isFinite(v.longitude)).toBe(true);
+    });
   });
 });
