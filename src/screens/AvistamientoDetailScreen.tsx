@@ -8,8 +8,9 @@ import {
   TextInput,
   View,
 } from 'react-native';
-import {identificacionesApi, avistamientosApi} from '../api';
+import {identificacionesApi, avistamientosApi, insigniasApi} from '../api';
 import {useAuth} from '../auth/AuthContext';
+import {InsigniasRow} from '../components/Insignias';
 import {
   enqueueIdentificacion,
   enqueueRetiroIdentificacion,
@@ -23,6 +24,7 @@ import {syncPendingMutations} from '../sync/mutationSync';
 import type {RemoteAvistamiento} from '../types/avistamiento';
 import type {Species} from '../types/domain';
 import type {GradoIdentificacion, Identificacion} from '../types/identificacion';
+import type {InsigniaOtorgada} from '../types/insignia';
 import {formatFechaCorta} from '../utils/fechas';
 
 interface AvistamientoDetailScreenProps {
@@ -70,6 +72,12 @@ export const AvistamientoDetailScreen = ({
   // devuelve como vigentes.
   const [retirosEnCola, setRetirosEnCola] = useState<number[]>([]);
   const [nombres, setNombres] = useState<Record<number, string>>({});
+  // Insignias de quienes identificaron, de una sola petición para toda la
+  // pantalla. Vacío mientras cargan o si la petición falló: son un adorno del
+  // nombre, no un dato sin el cual la ficha no se entienda.
+  const [insignias, setInsignias] = useState<Map<number, InsigniaOtorgada[]>>(
+    () => new Map(),
+  );
   const [isLoading, setIsLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
 
@@ -119,6 +127,13 @@ export const AvistamientoDetailScreen = ({
         ...enCola.map(item => item.payload.especie_id),
         ...(detalle.especie_id ? [detalle.especie_id] : []),
       ]);
+
+      // Después de la ficha y sin bloquearla: que las insignias no carguen no
+      // es motivo para dejar la pantalla en el spinner ni para mostrar un error.
+      void insigniasApi
+        .deUsuarios(lista.map(item => item.usuario_id))
+        .then(setInsignias)
+        .catch(() => {});
     } catch (error) {
       setLoadError(
         error instanceof Error ? error.message : 'No se pudo cargar el avistamiento',
@@ -255,6 +270,7 @@ export const AvistamientoDetailScreen = ({
               ? ' · retirada'
               : ''}
         </Text>
+        <InsigniasRow insignias={insignias.get(item.usuario_id) ?? []} />
         {!retirada && item.usuario_id === user?.id ? (
           <Pressable
             accessibilityRole="button"

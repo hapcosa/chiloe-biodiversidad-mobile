@@ -30,3 +30,11 @@ export interface InsigniaListResponse<T> {
   success: boolean;
   data: T[];
 }
+
+// `GET /api/v1/insignias/usuarios?ids=...`. Viene indexada por id —las claves
+// de un objeto JSON son texto— y con lista vacía para quien no tiene ninguna,
+// así que la ausencia de una clave significa "no se pidió", no "no tiene".
+export interface InsigniasPorUsuarioResponse {
+  success: boolean;
+  data: Record<string, InsigniaOtorgada[]>;
+}
