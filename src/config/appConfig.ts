@@ -8,7 +8,7 @@
 // que devuelve la API, así que el host del object storage lo decide el backend.
 const apiBaseUrl = __DEV__
   ? 'http://localhost:8080'
-  : 'https://api.budaicapital.com';
+  : 'https://api.piedrasdelrayadito.cl';
 
 // El ID de cliente *Web*, no el de Android: es la audiencia que Google pone en
 // el `idToken` y la que el auth-service valida. El cliente Android existe solo
