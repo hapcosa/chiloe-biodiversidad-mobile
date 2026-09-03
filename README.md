@@ -73,7 +73,7 @@ App Android (React Native bare CLI + módulo nativo C++ con NDK Camera2) para la
 
 `appConfig.apiBaseUrl` cambia según el tipo de build: debug usa
 `http://localhost:8080` (con los `adb reverse` de arriba) y release usa
-`https://api.budaicapital.com`. No hay que editar código para cambiar de entorno.
+`https://api.piedrasdelrayadito.cl`. No hay que editar código para cambiar de entorno.
 
 ```bash
 cd android && JAVA_HOME=/usr/lib/jvm/java-17-openjdk ./gradlew assembleRelease
