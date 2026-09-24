@@ -1,4 +1,4 @@
-import React, {useCallback, useEffect, useState} from 'react';
+import React, {useCallback, useEffect, useMemo, useState} from 'react';
 import {ActivityIndicator, Image, Pressable, ScrollView, StyleSheet, Text, View} from 'react-native';
 import {avistamientosApi, insigniasApi} from '../api';
 import {useAuth} from '../auth/AuthContext';
@@ -8,6 +8,7 @@ import {countEncuentros, listLocalAvistamientos} from '../db/mutationQueue';
 import {listSavedSpeciesIds} from '../db/savedSpecies';
 import {listViewedSpeciesIds} from '../db/speciesViewed';
 import {InsigniasLista} from '../components/Insignias';
+import {VisorFotos} from '../components/VisorFotos';
 import type {CameraCapture} from '../native/ChiloeCamera';
 import {uploadLocalPhotoPublicUrl} from '../native/photoUpload';
 import {shareEncuentroToStory} from '../native/socialShare';
@@ -66,7 +67,29 @@ export const PerfilScreen = ({
   const [socialSharingId, setSocialSharingId] = useState<string | null>(null);
   const [socialShareError, setSocialShareError] = useState<string | null>(null);
   const [insignias, setInsignias] = useState<InsigniaOtorgada[]>([]);
+  // Índice dentro de `fotosEncuentros` de la foto abierta a pantalla completa.
+  const [fotoAbierta, setFotoAbierta] = useState<number | null>(null);
   const [catalogoInsignias, setCatalogoInsignias] = useState<Insignia[]>([]);
+
+  // Las fotos de los encuentros forman un solo carrusel, en el orden en que se
+  // listan: al abrir una se puede recorrer el resto sin volver atrás.
+  const fotosEncuentros = useMemo(
+    () =>
+      encuentros
+        .filter(encuentro => encuentro.local_photo_path)
+        .map(encuentro => `file://${encuentro.local_photo_path}`),
+    [encuentros],
+  );
+
+  const abrirFoto = useCallback(
+    (uri: string) => {
+      const indice = fotosEncuentros.indexOf(uri);
+      if (indice >= 0) {
+        setFotoAbierta(indice);
+      }
+    },
+    [fotosEncuentros],
+  );
   const [stats, setStats] = useState<ExploradorStats>({
     encuentros: 0,
     especiesConEncuentro: 0,
@@ -354,11 +377,17 @@ export const PerfilScreen = ({
         encuentros.map(encuentro => (
           <View key={encuentro.local_id} style={styles.encuentroCard}>
             {encuentro.local_photo_path ? (
-              <Image
-                resizeMode="cover"
-                source={{uri: `file://${encuentro.local_photo_path}`}}
-                style={styles.encuentroThumb}
-              />
+              <Pressable
+                accessibilityHint="Abre la foto a pantalla completa"
+                accessibilityLabel={`Foto de ${encuentro.speciesName}`}
+                accessibilityRole="imagebutton"
+                onPress={() => abrirFoto(`file://${encuentro.local_photo_path}`)}>
+                <Image
+                  resizeMode="cover"
+                  source={{uri: `file://${encuentro.local_photo_path}`}}
+                  style={styles.encuentroThumb}
+                />
+              </Pressable>
             ) : null}
             <View style={styles.encuentroInfo}>
               <Text style={styles.encuentroName}>{encuentro.speciesName}</Text>
@@ -420,6 +449,13 @@ export const PerfilScreen = ({
       <Pressable accessibilityRole="button" onPress={logout} style={styles.logoutButton}>
         <Text style={styles.logoutButtonText}>Cerrar sesión</Text>
       </Pressable>
+
+      <VisorFotos
+        indiceInicial={fotoAbierta ?? 0}
+        onClose={() => setFotoAbierta(null)}
+        urls={fotosEncuentros}
+        visible={fotoAbierta !== null}
+      />
     </ScrollView>
   );
 };

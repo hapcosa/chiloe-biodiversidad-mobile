@@ -2,6 +2,7 @@ import React, {useEffect, useMemo, useState} from 'react';
 import type {StyleProp, TextStyle} from 'react-native';
 import {Image, Pressable, ScrollView, StyleSheet, Text, View} from 'react-native';
 import {AvisoFauna} from '../components/AvisoFauna';
+import {VisorFotos} from '../components/VisorFotos';
 import {requiereAvisoFauna} from '../content/avisos';
 import {listSavedSpeciesIds, saveSpecies, unsaveSpecies} from '../db/savedSpecies';
 import {colors, conservacionColors, reinoColors, reinoEmoji, spacing} from '../styles/theme';
@@ -61,6 +62,9 @@ export const EspecieDetailScreen = ({
   onAddEncuentro,
 }: EspecieDetailScreenProps): React.JSX.Element => {
   const [isSaved, setIsSaved] = useState(false);
+  // Índice de la foto abierta a pantalla completa; null con el visor cerrado.
+  const [fotoAbierta, setFotoAbierta] = useState<number | null>(null);
+  const fotos = useMemo(() => species.imagenes_urls ?? [], [species.imagenes_urls]);
   const conservacionColor = conservacionColors[species.estado_conservacion] ?? colors.muted;
   const ficha = useMemo(() => construirFicha(species), [species]);
   const factsApilados =
@@ -99,8 +103,14 @@ export const EspecieDetailScreen = ({
         </View>
       </View>
 
-      {species.imagenes_urls?.[0] ? (
-        <Image resizeMode="cover" source={{uri: species.imagenes_urls[0]}} style={styles.hero} />
+      {fotos[0] ? (
+        <Pressable
+          accessibilityHint="Abre la foto a pantalla completa"
+          accessibilityLabel={`Foto de ${species.nombre_comun || species.nombre_cientifico}`}
+          accessibilityRole="imagebutton"
+          onPress={() => setFotoAbierta(0)}>
+          <Image resizeMode="cover" source={{uri: fotos[0]}} style={styles.hero} />
+        </Pressable>
       ) : (
         <View
           style={[
@@ -205,16 +215,30 @@ export const EspecieDetailScreen = ({
         </View>
       ) : null}
 
-      {species.imagenes_urls?.length > 1 ? (
+      {fotos.length > 1 ? (
         <View style={styles.card}>
           <Text style={styles.sectionTitle}>Más fotos</Text>
           <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-            {species.imagenes_urls.slice(1).map(url => (
-              <Image key={url} resizeMode="cover" source={{uri: url}} style={styles.thumb} />
+            {fotos.slice(1).map((url, i) => (
+              <Pressable
+                accessibilityHint="Abre la foto a pantalla completa"
+                accessibilityLabel={`Foto ${i + 2} de ${fotos.length}`}
+                accessibilityRole="imagebutton"
+                key={url}
+                onPress={() => setFotoAbierta(i + 1)}>
+                <Image resizeMode="cover" source={{uri: url}} style={styles.thumb} />
+              </Pressable>
             ))}
           </ScrollView>
         </View>
       ) : null}
+
+      <VisorFotos
+        indiceInicial={fotoAbierta ?? 0}
+        onClose={() => setFotoAbierta(null)}
+        urls={fotos}
+        visible={fotoAbierta !== null}
+      />
     </ScrollView>
   );
 };
