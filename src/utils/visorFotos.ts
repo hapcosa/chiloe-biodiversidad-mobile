@@ -8,6 +8,10 @@
 // Todo lo que sigue es aritmética pura para poder probarla sin renderizar.
 
 export const ESCALA_MINIMA = 1;
+// Holgura para no confundir el pulso de un dedo apoyado con un arrastre.
+export const UMBRAL_ARRASTRE = 2;
+// Cuánto puede moverse un dedo y seguir contando como toque y no como arrastre.
+export const UMBRAL_TOQUE = 6;
 export const ESCALA_ACERCADA = 2.5;
 export const ESCALA_MAXIMA = 4;
 
@@ -94,3 +98,37 @@ export const distanciaEntreDedos = (
   }
   return Math.hypot(a.pageX - b.pageX, a.pageY - b.pageY);
 };
+
+/**
+ * Si el visor debe quedarse con el gesto. Cuenta los dedos aparte de mirar el
+ * desplazamiento porque en un pellizco simétrico el centroide no se mueve:
+ * mirando solo `dx`/`dy` un pellizco iniciado después de haberle cedido el
+ * gesto al carrusel no se recuperaría nunca.
+ */
+export const debeTomarElGesto = (
+  dedos: number,
+  escala: number,
+  dx: number,
+  dy: number,
+): boolean =>
+  dedos >= 2 ||
+  escala > ESCALA_MINIMA ||
+  Math.abs(dx) > UMBRAL_ARRASTRE ||
+  Math.abs(dy) > UMBRAL_ARRASTRE;
+
+/**
+ * Si el visor puede cederle el gesto al carrusel. Con la foto entera y un solo
+ * dedo sí: es el deslizamiento que cambia de foto. Acercada, o con dos dedos
+ * encima, no: cederlo dejaría el pellizco a medias, que es justo lo que hacía
+ * que acercar con la foto entera no hiciera nada.
+ */
+export const puedeCederElGesto = (dedos: number, escala: number): boolean =>
+  dedos < 2 && escala <= ESCALA_MINIMA;
+
+/**
+ * Si el gesto que terminó fue un toque. Un pellizco acaba con el centroide
+ * donde empezó, así que sin descontarlo pasaría por toque y dos pellizcos
+ * seguidos dispararían el doble toque.
+ */
+export const fueToque = (huboPellizco: boolean, dx: number, dy: number): boolean =>
+  !huboPellizco && Math.abs(dx) < UMBRAL_TOQUE && Math.abs(dy) < UMBRAL_TOQUE;
