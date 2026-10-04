@@ -3,12 +3,15 @@ import {
   ESCALA_MAXIMA,
   ESCALA_MINIMA,
   clampArrastre,
+  debeTomarElGesto,
   distanciaEntreDedos,
   escalaAlternada,
   escalaDePellizco,
   etiquetaPosicion,
+  fueToque,
   indiceDesdeOffset,
   limitesArrastre,
+  puedeCederElGesto,
 } from '../visorFotos';
 
 describe('indiceDesdeOffset', () => {
@@ -107,5 +110,60 @@ describe('distanciaEntreDedos', () => {
 
   it('devuelve cero con un solo dedo', () => {
     expect(distanciaEntreDedos([{pageX: 10, pageY: 10}])).toBe(0);
+  });
+});
+
+describe('debeTomarElGesto', () => {
+  // Un pellizco simétrico deja el centroide quieto, así que mirando solo el
+  // desplazamiento el visor no reclamaría el gesto tras habérselo cedido al
+  // carrusel.
+  it('toma el gesto con dos dedos aunque el centroide no se mueva', () => {
+    expect(debeTomarElGesto(2, ESCALA_MINIMA, 0, 0)).toBe(true);
+  });
+
+  it('con la foto entera y un dedo quieto lo deja pasar al carrusel', () => {
+    expect(debeTomarElGesto(1, ESCALA_MINIMA, 0, 0)).toBe(false);
+    expect(debeTomarElGesto(1, ESCALA_MINIMA, 2, -2)).toBe(false);
+  });
+
+  it('con la foto entera y un dedo que arrastra, el gesto es del visor', () => {
+    expect(debeTomarElGesto(1, ESCALA_MINIMA, 3, 0)).toBe(true);
+    expect(debeTomarElGesto(1, ESCALA_MINIMA, 0, -3)).toBe(true);
+  });
+
+  it('con la foto acercada siempre toma el gesto', () => {
+    expect(debeTomarElGesto(1, ESCALA_ACERCADA, 0, 0)).toBe(true);
+  });
+});
+
+describe('puedeCederElGesto', () => {
+  it('cede el deslizamiento de un dedo con la foto entera: eso pagina', () => {
+    expect(puedeCederElGesto(1, ESCALA_MINIMA)).toBe(true);
+  });
+
+  // El bug real del teléfono: el carrusel pide el gesto cuando ya hay dos dedos
+  // en la pantalla, y cederlo ahí dejaba el pellizco muerto.
+  it('no cede a mitad de un pellizco', () => {
+    expect(puedeCederElGesto(2, ESCALA_MINIMA)).toBe(false);
+  });
+
+  it('no cede con la foto acercada: el arrastre la recorre', () => {
+    expect(puedeCederElGesto(1, ESCALA_ACERCADA)).toBe(false);
+  });
+});
+
+describe('fueToque', () => {
+  it('un dedo que apenas se movió es un toque', () => {
+    expect(fueToque(false, 1, -2)).toBe(true);
+  });
+
+  it('un arrastre no es un toque', () => {
+    expect(fueToque(false, 40, 0)).toBe(false);
+  });
+
+  // Un pellizco vuelve al centroide de partida: sin descontarlo contaría como
+  // toque y dos pellizcos seguidos dispararían el doble toque.
+  it('un pellizco no es un toque aunque termine donde empezó', () => {
+    expect(fueToque(true, 0, 0)).toBe(false);
   });
 });

@@ -15,12 +15,15 @@ import {
 import {
   ESCALA_MINIMA,
   clampArrastre,
+  debeTomarElGesto,
   distanciaEntreDedos,
   escalaAlternada,
   escalaDePellizco,
   etiquetaPosicion,
+  fueToque,
   indiceDesdeOffset,
   limitesArrastre,
+  puedeCederElGesto,
 } from '../utils/visorFotos';
 
 const MS_DOBLE_TOQUE = 280;
@@ -47,6 +50,7 @@ const PaginaFoto = ({uri, ancho, alto, activa, onZoom}: PaginaProps) => {
   const escalaBase = useRef(ESCALA_MINIMA);
   const traslacionBase = useRef({x: 0, y: 0});
   const distanciaBase = useRef(0);
+  const huboPellizco = useRef(false);
   const ultimoToque = useRef(0);
 
   const aplicar = useCallback(
@@ -77,21 +81,30 @@ const PaginaFoto = ({uri, ancho, alto, activa, onZoom}: PaginaProps) => {
     () =>
       PanResponder.create({
         onStartShouldSetPanResponder: () => true,
-        onMoveShouldSetPanResponder: (_evt, gesto) =>
-          escalaRef.current > ESCALA_MINIMA ||
-          Math.abs(gesto.dx) > 2 ||
-          Math.abs(gesto.dy) > 2,
-        // Con la foto al mínimo el carrusel puede quitarnos el gesto y paginar;
-        // acercada, no: el arrastre es para recorrer la foto.
-        onPanResponderTerminationRequest: () => escalaRef.current <= ESCALA_MINIMA,
+        onMoveShouldSetPanResponder: (evt, gesto) =>
+          debeTomarElGesto(
+            evt.nativeEvent.touches.length,
+            escalaRef.current,
+            gesto.dx,
+            gesto.dy,
+          ),
+        // El conteo sale del evento, no de lo último visto en un move: el
+        // carrusel pide el gesto en cuanto el primer dedo cruza su umbral,
+        // antes de que el segundo llegue a producir un move. En ese momento el
+        // evento ya trae los dos dedos —`numberActiveTouches` todavía no—, así
+        // que mirar cualquier otra cosa cedía el gesto a mitad del pellizco.
+        onPanResponderTerminationRequest: evt =>
+          puedeCederElGesto(evt.nativeEvent.touches.length, escalaRef.current),
         onPanResponderGrant: () => {
           escalaBase.current = escalaRef.current;
           traslacionBase.current = traslacionRef.current;
           distanciaBase.current = 0;
+          huboPellizco.current = false;
         },
         onPanResponderMove: (evt, gesto) => {
           const dedos = evt.nativeEvent.touches;
           if (dedos.length >= 2) {
+            huboPellizco.current = true;
             const distancia = distanciaEntreDedos(dedos);
             if (distanciaBase.current === 0) {
               distanciaBase.current = distancia;
@@ -117,8 +130,9 @@ const PaginaFoto = ({uri, ancho, alto, activa, onZoom}: PaginaProps) => {
         },
         onPanResponderRelease: (_evt, gesto) => {
           distanciaBase.current = 0;
-          const fueToque = Math.abs(gesto.dx) < 6 && Math.abs(gesto.dy) < 6;
-          if (!fueToque) {
+          const toque = fueToque(huboPellizco.current, gesto.dx, gesto.dy);
+          huboPellizco.current = false;
+          if (!toque) {
             return;
           }
           const ahora = Date.now();
