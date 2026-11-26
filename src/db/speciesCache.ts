@@ -27,6 +27,8 @@ interface SpeciesRow {
   imagenes_urls: string;
   genero_nombre: string | null;
   categoria_id: number | null;
+  // NULL en las filas cacheadas antes de que existiera la columna.
+  fotos_creditos: string | null;
 }
 
 const stringify = (value: unknown): string => JSON.stringify(value ?? null);
@@ -65,6 +67,7 @@ const rowToSpecies = (row: SpeciesRow): Species => ({
   imagenes_urls: parseJson(row.imagenes_urls, []),
   genero_nombre: row.genero_nombre ?? undefined,
   categoria_id: row.categoria_id,
+  fotos_creditos: parseJson(row.fotos_creditos ?? '{}', {}),
 });
 
 export const upsertSpecies = async (speciesList: Species[]): Promise<void> => {
@@ -75,8 +78,8 @@ export const upsertSpecies = async (speciesList: Species[]): Promise<void> => {
         descripcion, habitat, distribucion_chiloe, endemica, estado_conservacion,
         fuentes, geo_lat, geo_lng, atributos_especificos, foto_portada_key,
         fotos_keys, creado_por, revisado_por, fecha_revision, created_at,
-        updated_at, imagenes_urls, genero_nombre, categoria_id
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        updated_at, imagenes_urls, genero_nombre, categoria_id, fotos_creditos
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       ON CONFLICT(id) DO UPDATE SET
         reino = excluded.reino,
         genero_id = excluded.genero_id,
@@ -101,7 +104,8 @@ export const upsertSpecies = async (speciesList: Species[]): Promise<void> => {
         updated_at = excluded.updated_at,
         imagenes_urls = excluded.imagenes_urls,
         genero_nombre = excluded.genero_nombre,
-        categoria_id = excluded.categoria_id`,
+        categoria_id = excluded.categoria_id,
+        fotos_creditos = excluded.fotos_creditos`,
       [
         species.id,
         species.reino,
@@ -128,6 +132,7 @@ export const upsertSpecies = async (speciesList: Species[]): Promise<void> => {
         stringify(species.imagenes_urls),
         species.genero_nombre ?? null,
         species.categoria_id ?? null,
+        stringify(species.fotos_creditos ?? {}),
       ],
     );
   }

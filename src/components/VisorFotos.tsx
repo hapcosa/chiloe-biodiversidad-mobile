@@ -22,6 +22,8 @@ import {
   indiceDesdeOffset,
   limitesArrastre,
 } from '../utils/visorFotos';
+import type {CreditoFoto} from '../types/domain';
+import {PieDeFoto} from './PieDeFoto';
 
 const MS_DOBLE_TOQUE = 280;
 
@@ -156,6 +158,8 @@ const PaginaFoto = ({uri, ancho, alto, activa, onZoom}: PaginaProps) => {
 
 export interface VisorFotosProps {
   urls: string[];
+  // Alineado con `urls`; una posición vacía es una foto sin atribución.
+  creditos?: (CreditoFoto | undefined)[];
   indiceInicial?: number;
   visible: boolean;
   onClose: () => void;
@@ -166,7 +170,13 @@ export interface VisorFotosProps {
  * muestra la foto entera —no recortada como en la ficha— y deja pasar de una a
  * otra deslizando.
  */
-export const VisorFotos = ({urls, indiceInicial = 0, visible, onClose}: VisorFotosProps) => {
+export const VisorFotos = ({
+  urls,
+  creditos,
+  indiceInicial = 0,
+  visible,
+  onClose,
+}: VisorFotosProps) => {
   const {width, height} = useWindowDimensions();
   const [indice, setIndice] = useState(indiceInicial);
   const [acercada, setAcercada] = useState(false);
@@ -194,6 +204,8 @@ export const VisorFotos = ({urls, indiceInicial = 0, visible, onClose}: VisorFot
   if (urls.length === 0) {
     return null;
   }
+
+  const credito = creditos?.[indice];
 
   return (
     <Modal
@@ -236,6 +248,8 @@ export const VisorFotos = ({urls, indiceInicial = 0, visible, onClose}: VisorFot
             <Text style={styles.cerrarTexto}>✕</Text>
           </Pressable>
         </View>
+
+        {credito ? <PieDeFoto credito={credito} style={styles.pie} /> : null}
       </View>
     </Modal>
   );
@@ -256,6 +270,19 @@ const styles = StyleSheet.create({
     position: 'absolute',
     right: 0,
     top: 24,
+  },
+  pie: {
+    backgroundColor: '#00000088',
+    bottom: 0,
+    color: '#FFFFFF',
+    fontSize: 13,
+    left: 0,
+    paddingHorizontal: 16,
+    paddingBottom: 32,
+    paddingTop: 12,
+    position: 'absolute',
+    right: 0,
+    textAlign: 'center',
   },
   contador: {
     color: '#FFFFFF',

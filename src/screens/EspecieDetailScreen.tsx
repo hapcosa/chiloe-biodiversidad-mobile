@@ -2,11 +2,13 @@ import React, {useEffect, useMemo, useState} from 'react';
 import type {StyleProp, TextStyle} from 'react-native';
 import {Image, Pressable, ScrollView, StyleSheet, Text, View} from 'react-native';
 import {AvisoFauna} from '../components/AvisoFauna';
+import {PieDeFoto} from '../components/PieDeFoto';
 import {VisorFotos} from '../components/VisorFotos';
 import {requiereAvisoFauna} from '../content/avisos';
 import {listSavedSpeciesIds, saveSpecies, unsaveSpecies} from '../db/savedSpecies';
 import {colors, conservacionColors, reinoColors, reinoEmoji, spacing} from '../styles/theme';
 import type {Species} from '../types/domain';
+import {creditoDeUrl} from '../utils/creditos';
 import {construirFicha} from '../utils/ficha';
 
 interface EspecieDetailScreenProps {
@@ -65,6 +67,10 @@ export const EspecieDetailScreen = ({
   // Índice de la foto abierta a pantalla completa; null con el visor cerrado.
   const [fotoAbierta, setFotoAbierta] = useState<number | null>(null);
   const fotos = useMemo(() => species.imagenes_urls ?? [], [species.imagenes_urls]);
+  const creditos = useMemo(
+    () => fotos.map(url => creditoDeUrl(url, species.fotos_creditos)),
+    [fotos, species.fotos_creditos],
+  );
   const conservacionColor = conservacionColors[species.estado_conservacion] ?? colors.muted;
   const ficha = useMemo(() => construirFicha(species), [species]);
   const factsApilados =
@@ -121,6 +127,8 @@ export const EspecieDetailScreen = ({
           <Text style={styles.heroPlaceholderEmoji}>{reinoEmoji[species.reino]}</Text>
         </View>
       )}
+
+      {creditos[0] ? <PieDeFoto credito={creditos[0]} style={styles.credito} /> : null}
 
       <View style={styles.titleRow}>
         <Text style={styles.commonName}>{species.nombre_comun || species.nombre_cientifico}</Text>
@@ -234,6 +242,7 @@ export const EspecieDetailScreen = ({
       ) : null}
 
       <VisorFotos
+        creditos={creditos}
         indiceInicial={fotoAbierta ?? 0}
         onClose={() => setFotoAbierta(null)}
         urls={fotos}
@@ -286,6 +295,12 @@ const styles = StyleSheet.create({
   },
   heroPlaceholderEmoji: {
     fontSize: 72,
+  },
+  credito: {
+    color: colors.muted,
+    fontSize: 11,
+    marginBottom: spacing.md,
+    marginTop: -spacing.sm,
   },
   thumb: {
     borderRadius: 12,

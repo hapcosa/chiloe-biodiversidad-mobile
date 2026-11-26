@@ -1,5 +1,6 @@
 import {executeSql, querySql} from '../connection';
-import {pruneSpeciesNotIn} from '../speciesCache';
+import type {Species} from '../../types/domain';
+import {getCachedSpecies, pruneSpeciesNotIn, upsertSpecies} from '../speciesCache';
 
 jest.mock('../connection', () => ({
   executeSql: jest.fn().mockResolvedValue(undefined),
@@ -66,5 +67,40 @@ describe('pruneSpeciesNotIn', () => {
         sql.startsWith('INSERT OR IGNORE INTO species_sync_ids'),
       ),
     ).toBe(false);
+  });
+});
+
+describe('créditos de fotos en el cache', () => {
+  const creditos = {'especies/a.jpg': {autor: 'Ana', licencia: 'cc-by'}};
+
+  it('guarda los créditos y manda un parámetro por columna', async () => {
+    await upsertSpecies([
+      {
+        id: 1,
+        fotos_keys: [],
+        imagenes_urls: [],
+        fotos_creditos: creditos,
+      } as unknown as Species,
+    ]);
+
+    const sql = mockExecuteSql.mock.calls[0]?.[0] ?? '';
+    const params = mockExecuteSql.mock.calls[0]?.[1] ?? [];
+    expect(params).toHaveLength(sql.match(/\?/g)?.length ?? 0);
+    expect(params[params.length - 1]).toBe(JSON.stringify(creditos));
+  });
+
+  it('lee como sin créditos una fila anterior a la columna', async () => {
+    mockQuerySql.mockResolvedValue([
+      {
+        id: 1,
+        fuentes: '[]',
+        atributos_especificos: '{}',
+        fotos_keys: '[]',
+        imagenes_urls: '[]',
+        fotos_creditos: null,
+      },
+    ]);
+
+    await expect(getCachedSpecies(1)).resolves.toMatchObject({fotos_creditos: {}});
   });
 });

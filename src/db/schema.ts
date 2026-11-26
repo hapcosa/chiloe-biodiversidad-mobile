@@ -24,7 +24,8 @@ export const tableStatements = [
     updated_at TEXT,
     imagenes_urls TEXT NOT NULL,
     genero_nombre TEXT,
-    categoria_id INTEGER
+    categoria_id INTEGER,
+    fotos_creditos TEXT
   )`,
   `CREATE TABLE IF NOT EXISTS sync_state (
     key TEXT PRIMARY KEY,
@@ -76,6 +77,7 @@ export const tableStatements = [
 export const alterStatements = [
   "ALTER TABLE local_avistamientos ADD COLUMN precision_declarada TEXT NOT NULL DEFAULT 'exacto'",
   'ALTER TABLE species ADD COLUMN categoria_id INTEGER',
+  'ALTER TABLE species ADD COLUMN fotos_creditos TEXT',
 ];
 
 // Los índices van después de los ALTER, no junto a las tablas: `CREATE TABLE
