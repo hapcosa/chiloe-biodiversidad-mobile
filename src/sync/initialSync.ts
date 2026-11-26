@@ -3,7 +3,9 @@ import {initializeDatabase} from '../db/connection';
 import {pruneSpeciesNotIn, upsertSpecies} from '../db/speciesCache';
 import {getSyncState, setSyncState} from '../db/syncState';
 
-const INITIAL_SYNC_KEY = 'species.initialSyncAt';
+// El sufijo sube cuando el cache gana una columna que hay que rellenar ya: así
+// la app actualizada resincroniza sin esperar a que venza el día.
+const INITIAL_SYNC_KEY = 'species.initialSyncAt.v2';
 
 interface InitialSyncOptions {
   pageSize?: number;

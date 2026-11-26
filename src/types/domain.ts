@@ -8,6 +8,14 @@ export type JsonValue =
   | JsonValue[]
   | {[key: string]: JsonValue};
 
+// Atribución de una foto de fuente abierta (ADR #28 del backend).
+export interface CreditoFoto {
+  autor?: string | null;
+  licencia: string;
+  url_origen?: string;
+  fuente?: string;
+}
+
 export interface Species {
   id: number;
   reino: Reino;
@@ -26,6 +34,8 @@ export interface Species {
   atributos_especificos: {[key: string]: JsonValue};
   foto_portada_key?: string | null;
   fotos_keys: string[];
+  // Indexado por la key de la foto. Sin entrada: propia o de origen no abierto.
+  fotos_creditos?: {[key: string]: CreditoFoto};
   creado_por?: number | null;
   revisado_por?: number | null;
   fecha_revision?: string | null;
